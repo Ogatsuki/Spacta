@@ -1,0 +1,15 @@
+{
+  "name": "membrain-starter",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "verify": "node verify/verify.mjs .",
+    "verify:tsc": "node verify/verify.mjs . --tsc",
+    "garden": "node garden/garden.mjs ."
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "tailwindcss": "^3.4.0",
+    "tailwind-variants": "^0.2.1"
+  }
+}
