@@ -17,19 +17,19 @@ This failed to detect `new Date()` calls and produced a **false green**. The `io
 
 ## Checks Performed (Corresponding to `MEMBRAIN.md` §1)
 
-| Law | Target | Detection |
+| Law / Rule | Target | Detection (Diagnostic Name) |
 |---|---|---|
-| L1 | `src/features/**` | Restricts imports from other features (enforcing feature isolation). |
-| L2 | `**/core.ts` | Ensures Core purity by banning `async`, `await`, `new Date`, `Date.now`, `Math.random`, `fetch`, global browser objects (`window`, `document`, `localStorage`), and backend imports (such as Prisma). |
-| L4 | `**/shell.tsx` | Enforces exhaustiveness checking on handwritten `switch` statements matching `effect.type` by requiring `assertNever` or `: never` termination. |
-| L5 | `app/**/page.tsx`, `app/**/route.ts` | Bans non-deterministic actions at server boundaries (e.g. `new Date`, `Date.now`, `Math.random`, or `crypto.randomUUID` trigger errors, along with importing `uuid` or `nanoid`) and discourages inline data aggregations (`.reduce()` triggers warnings) to keep page/route edges thin. Both pages and routes undergo the same AST inspection. |
-| L7 | `src/shared/**` | Prevents reverse dependencies where code in `shared/` imports from the `features/` directory. |
-| L6 | `verify/fixtures/` | **Verifier self-test suite**. Confirms the checker correctly rejects planted violations and avoids false positives on compliant code. |
-| L8 | `features/**/shell.tsx`, `features/**/components/**` | Flags raw hex colors (`#hex`), Tailwind arbitrary values (`bg-[...]`), non-semantic grayscales, and hardcoded color/opacity mappings (e.g. `fuchsia-400/10`) to guide visual system alignment. Runs in **info mode (non-blocking)**. |
-| clone | `features/**/shell.tsx`, `features/**/components/**` | Identifies highly similar UI structures (JSX and Tailwind classes) using Jaccard similarity. Analyzes className lists as order-independent sets and filters out nested `.map()` callbacks to avoid parent-child false positives. Runs in **info mode (non-blocking)**. |
-| info | `**/types.ts`, `tsconfig.json` | Sharing budget lines / checks if includes cover `app/` (does not fail). |
-| info | `features/**/types.ts` exports | **dead-export**: Identifies exported types or constants in `types.ts` that have no consumers across the codebase (preventing shared contract bloat). Non-blocking. |
-| info | `features/**/types.ts` exports | **single-owner-export**: Identifies exported contracts used by exactly one file, suggesting they be colocated. Excludes membrane vocabulary (`Action`, `Effect`, `State`, `InitData`). Non-blocking. |
+| L1 | `src/features/**` | Imports from other features (**Isolation** violation). |
+| L2 | `**/core.ts` | Async, await, new Date, Date.now, Math.random, fetch, window, document, localStorage, or prisma usage (**Purity** violation). |
+| L4 | `**/shell.tsx` | Handwritten `switch` on `effect.type` without `assertNever` / `: never` termination (**Exhaustiveness** violation). |
+| L5 | `app/**/page.tsx`, `app/**/route.ts` | Direct non-deterministic generation (`new Date`/`Date.now`/`Math.random`/`crypto.randomUUID` = err) / direct aggregation (`.reduce()` = warn) at server boundaries (**Source Purity** violation). Both pages and routes undergo the same AST inspection. |
+| L7 | `src/shared/**` | `shared/*` importing from `features/*` (**Reverse Dependency Prevention** violation). |
+| L6 | `verify/fixtures/` | **Verifier self-verification**. Enforces that known violations are rejected and correct files are not false-positived. |
+| L8 | `features/**/shell.tsx`, `features/**/components/**` | Direct use of raw colors (`#hex`), arbitrary values (`bg-[...]`), non-semantic grayscale palettes, or hidden hardcoded color/opacity (**Presentation Purity** violation, info/burn-in only). |
+| clone | `features/**/shell.tsx`, `features/**/components/**` | UI duplication based on JSX structure and Jaccard similarity of classNames (**UI Duplication** info/burn-in). |
+| info | `**/types.ts`, `tsconfig.json` | types.ts line budget check (shared = 250, feature = 200) / tsconfig app inclusion. |
+| dead-export | `features/**/types.ts` exports | Exported contracts that are not imported anywhere in `src/` or `app/` (**Dead Export** info). |
+| single-owner-export | `features/**/types.ts` exports | Local contracts imported by only one file, excluding Action/Effect/State/InitData (**Single Owner Export** info). |
 
 The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
 

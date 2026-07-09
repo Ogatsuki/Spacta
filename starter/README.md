@@ -10,25 +10,25 @@ The bundled `../verify/verify.mjs` operates assuming this structure:
 
 ## What's Inside (Minimal examples satisfying each law)
 
-| File / Directory | Role | Corresponding Law / Section |
+| File | Role | Corresponding Law |
 |------|------|-------------------|
-| `app/layout.tsx` | Common shell layout for all pages. Features only render the inner content. | §2.5 (Layouts Go Up) |
-| `tailwind.config.ts` | The single source of truth for presentation primitives (`theme.extend`) like colors, margins, and border-radius. | L8 (Presentation Purity) source |
-| `src/shared/ui/*` | Feature-agnostic presentation primitives. Style variants are co-located within components using `tailwind-variants`. | L7 Philosophy |
-| `src/shared/types.ts` | Shared `Effect` union + `assertNever` helper. | L4 (Guardian of Exhaustiveness) |
-| `src/shared/runEffect.ts` | The **only** place where Effects are executed (handled via a switch statement with an `assertNever` check). | L4 |
-| `src/shared/source.ts` | The system "edge" for reading time, generating IDs, and performing IO (isolated from both Core and Pages). | Escape hatch for L3/L5 |
-| `src/features/sample/types.ts` | Membrane contracts (`InitData`, `State`, `Action`) defined as discriminated unions. | — |
-| `src/features/sample/core.ts` | Pure functions (`init`, `update`, `summarize`) containing no IO; non-deterministic values like time are injected. | L2 / L3 |
-| `src/features/sample/shell.tsx` | A thin state-wiring component containing no business logic. | L1 / L4 |
-| `src/features/sample/components/*` | Feature-specific UI components, localized to prevent unnecessary coupling. | §2.5 (Components Go In) |
-| `app/page.tsx` | Server component (Page). Reads values from `source` and renders the feature `shell`. | L5 |
+| `app/layout.tsx` | Common frame for all pages. Features only draw the inner content. | §2.5 (Layouts Go Up) |
+| `tailwind.config.ts` | The sole source of presentation primitives (`theme.extend`) such as colors, margins, and border-radius. | L8 (Presentation Purity) source |
+| `src/shared/ui/*` | Presentation primitives that do not know feature names. Variants are co-located using `tailwind-variants`. | L7 (Reverse Dependency Prevention) |
+| `src/shared/types.ts` | `Effect` union + `assertNever` helper. | L4 (Exhaustiveness) |
+| `src/shared/runEffect.ts` | The **only** place where Effects are executed (switch + `assertNever`). | L4 (Exhaustiveness) |
+| `src/shared/source.ts` | The "edge" for reading time and IO (neither Core nor Page). | Escape hatch for L3 (Injection) / L5 (Source Purity) |
+| `src/features/sample/types.ts` | `InitData` / `State` / `Action` discriminated unions. | — |
+| `src/features/sample/core.ts` | Pure `init` / `update` / `summarize` (no IO, `now` is injected). | L2 (Purity) / L3 (Injection) |
+| `src/features/sample/shell.tsx` | Thin shell containing only state wiring. | L1 (Isolation) / L4 (Exhaustiveness) |
+| `src/features/sample/components/*` | Feature-specific UI components. Localized without fear of duplication. | §2.5 (Components Go In) |
+| `app/page.tsx` | Server Page. Only reads values from `source` and calls the `shell`. | L5 (Source Purity) |
 
-Key points that commonly trip up developers and AIs:
-- **Do not generate non-deterministic values (like time or random numbers) inside Core.** `source.readNow()` reads it at the edge, and passes it as `InitData.now` (L3).
-  Writing `new Date()` in `core.ts` flags red in L2. Writing it in `page.tsx` flags red in L5. Put it in the edge (`source.ts`/`shell.tsx`).
-- **Effect switches are allowed ONLY in `runEffect.ts`.** Writing a handwritten switch on `effect.type` in `shell.tsx` flags red in L4.
-- **Direct cross-feature imports are prohibited.** Importing the internals of an adjacent feature flags red in L1. Always go through `@/shared` or stay local to the feature.
+Key points that trip up new AIs:
+- **Do not generate time inside Core.** `source.readNow()` reads it at the edge, and passes it as `InitData.now` (L3).
+  Writing `new Date()` in `core.ts` flags red under L2 (Purity). Writing it in `page.tsx` flags red under L5 (Source Purity). Put it in the edge (`source.ts`/`shell.tsx`).
+- **Effect switches are allowed ONLY in `runEffect.ts`.** Writing a handwritten switch on `effect.type` in `shell.tsx` flags red under L4 (Exhaustiveness).
+- **Cross-feature imports are restricted.** Importing the internals of an adjacent feature flags red under L1 (Isolation). Always go through `@/shared` or stay local to the feature.
 - **Raise common frames and vocabulary.** Extract common layouts and layout-agnostic presentation vocabulary. Feature-specific look-and-feel should be confined within `components/`.
 - **Avoid hardcoding layout or presentation values directly in shells or components.** First, use the `theme.extend` vocabulary in `tailwind.config.ts` (e.g., `bg-primary`).
   Share utility tokens, not monolithic UIs. Co-locate variant mappings (such as color tones or sizes) directly inside components in `shared/ui` using `tailwind-variants` (`tv()`). Do not group class strings into a centralized `tokens.ts` file.
