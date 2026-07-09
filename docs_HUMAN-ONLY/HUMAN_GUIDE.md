@@ -53,5 +53,5 @@ src/features/<feature_name>/
 ---
 
 ## Next Steps
-*   To set up a new project, follow [docs_HUMAN-ONLY/setup.md](file:///home/_9fkaw/Projects/fcis/workspace/Membrain/docs_HUMAN-ONLY/setup.md).
-*   For the history, context, and detailed design logs of Membrain's alpha evaluations, refer to [docs_HUMAN-ONLY/membrain-alpha-evaluation.md](file:///home/_9fkaw/Projects/fcis/workspace/Membrain/docs_HUMAN-ONLY/membrain-alpha-evaluation.md).
+*   To set up a new project, follow [docs_HUMAN-ONLY/setup.md](setup.md).
+*   For the history, context, and detailed design logs of Membrain's alpha evaluations, refer to [docs_HUMAN-ONLY/membrain-alpha-evaluation.md](membrain-alpha-evaluation.md).
