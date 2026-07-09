@@ -1,8 +1,8 @@
-# Membrain — Project Conventions (To be read first by AI)
+# Membrain — Project Conventions (AI Rules)
 
 > This document defines the execution rules only. Compliance is mechanically verified by `npm run verify`.
 > Your job is not to "memorize the conventions" but to **fix the code until `verify` passes (returns green)**.
-> For the history, context, and insights behind these rules, refer to `docs/membrain-alpha-evaluation.md` (Alpha Evaluation). They are not written here.
+> For the history, context, and insights behind these rules, refer to `docs/membrain-alpha-evaluation.md` (Alpha Evaluation).
 >
 > Structure: **§0 Bootstrap** / **§1 Law (Invariant & Mechanically Enforced)** / **§2 Form (Decided in Phase 0 & Mutable)** / **§2.5 Judgment (Decided contextually by the implementing AI)** / **§3 Verification Contract** / **§4 Minimal Instructions to AI**
 >
@@ -12,7 +12,8 @@
 ---
 
 ## Why Membrain? (AI-Friendly Architecture)
-Membrain enforces strict boundary rules that highly align with LLM coding capabilities, making it an optimized environment for AI-driven development (e.g., 90% AI / 10% Human collaboration):
+
+Membrain enforces strict boundary rules that highly align with LLM coding capabilities, making it an optimized environment for AI-driven development:
 * **Token & Complexity Reduction**: 
   * Cross-feature imports are banned (L1). When modifying feature B, you do not need to read or understand feature A. This keeps context size small and prevents regression.
   * Business logic is pure (`*/core.ts`) with no IO/Side-effects (L2). State transitions can be written and updated cleanly without network or DOM noise.
