@@ -74,9 +74,116 @@ function eachNode(node, fn) {
   ts.forEachChild(node, (c) => eachNode(c, fn));
 }
 
-const V = (file, line, rule, msg) => ({ file, line, rule, msg });
+const V = (file, line, col, rule, msg) => ({ file, line, col, rule, msg });
+function locOf(sf, node) {
+  const { line, character } = sf.getLineAndCharacterOfPosition(node.getStart(sf));
+  return { line: line + 1, col: character + 1 };
+}
 function lineOf(sf, node) {
   return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+}
+
+const fileLinesCache = new Map();
+function getFileLine(file, lineNumber) {
+  if (!fileLinesCache.has(file)) {
+    try {
+      const content = readFileSync(file, "utf8");
+      fileLinesCache.set(file, content.split(/\r?\n/));
+    } catch {
+      fileLinesCache.set(file, []);
+    }
+  }
+  const lines = fileLinesCache.get(file);
+  return lines[lineNumber - 1] ?? "";
+}
+
+function getViolationDetails(v) {
+  let name = "";
+  let why = v.msg;
+  let fix = "";
+
+  switch (v.rule) {
+    case "L1":
+      name = "Isolation";
+      why = v.msg;
+      fix = "Avoid direct cross-feature imports. Go through the @/shared layer or communicate via API/DB/URL boundaries.";
+      break;
+    case "L2":
+      name = "Purity";
+      why = v.msg;
+      if (v.msg.includes("async")) {
+        fix = "Remove the 'async' keyword. Move asynchronous logic/side-effects out of Core.";
+      } else if (v.msg.includes("await")) {
+        fix = "Remove the 'await' keyword. Move side-effects out of Core.";
+      } else if (v.msg.includes("Date") || v.msg.includes("Math.random")) {
+        fix = "Do not generate time or random values inside Core. Inject them via InitData or Action arguments (L3).";
+      } else if (v.msg.includes("IO")) {
+        fix = "Remove IO/global dependencies (fetch, window, document, etc.). Delegate IO to Shell/runEffect and pass pure values to Core.";
+      } else {
+        fix = "Move IO/framework dependencies outside Core to Shell or runEffect.";
+      }
+      break;
+    case "L4":
+      name = "Exhaustiveness";
+      why = v.msg;
+      fix = "Use the shared runEffect runtime or add an exhaustiveness check (assertNever or ': never') at the end of the switch statement.";
+      break;
+    case "L5":
+      name = "Source Purity";
+      why = v.msg;
+      if (v.msg.includes("reduce")) {
+        fix = "Move aggregation/formatting logic to a pure function in Core.";
+      } else {
+        fix = "Do not generate time, random values, or UUIDs at server boundaries. Read them at the Source edge and inject them.";
+      }
+      break;
+    case "L7":
+      name = "Reverse Dependency Prevention";
+      why = v.msg;
+      fix = "Remove imports targeting the features layer from the shared layer.";
+      break;
+    case "L8":
+      name = "Presentation Purity";
+      why = v.msg;
+      if (v.msg.includes("arbitrary")) {
+        fix = "Avoid hardcoded Tailwind arbitrary values. Use theme.extend tokens or shared/ui recipes.";
+      } else if (v.msg.includes("Raw color")) {
+        fix = "Avoid raw color hex codes. Use semantic theme tokens.";
+      } else {
+        fix = "Avoid hardcoded grayscales or color/opacity. Use semantic theme tokens (e.g. bg-background, text-foreground).";
+      }
+      break;
+    case "clone":
+      name = "UI Duplication";
+      why = v.msg;
+      fix = "Deduplicate into components/ if 100% identical and within the same feature, otherwise duplicate is acceptable.";
+      break;
+    case "dead-export":
+      name = "Dead Export";
+      why = v.msg;
+      fix = "Delete the unused export, or add a '// garden:keep <reason>' comment to retain it.";
+      break;
+    case "single-owner-export":
+      name = "Single Owner Export";
+      why = v.msg;
+      fix = "Consider colocating this type/constant inside its single consumer file.";
+      break;
+    default:
+      name = "Unknown Violation";
+      why = v.msg;
+      fix = "Resolve the violation according to Membrain conventions.";
+  }
+
+  return { name, why, fix };
+}
+
+function getFeatureNameFromPath(absPath) {
+  const norm = absPath.replace(/\\/g, "/");
+  const m = norm.match(/\/features\/([^/]+)/);
+  if (m) return m[1];
+  const v = norm.match(/\/verify\/([^/]+)/);
+  if (v && v[1] !== "fixtures") return v[1];
+  return null;
 }
 
 // ───────────────────────── L2 Core純度 ─────────────────────────
@@ -88,75 +195,83 @@ export function checkCorePurity(file, text) {
   const sf = parse(file, text);
   const out = [];
   eachNode(sf, (n) => {
-    // async 関数
+    const loc = locOf(sf, n);
+    // async functions
     if ((ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isMethodDeclaration(n)) &&
         n.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
-      out.push(V(file, lineOf(sf, n), "L2", "async 関数は Core で禁止"));
+      out.push(V(file, loc.line, loc.col, "L2", "async functions are prohibited in Core"));
     }
     // await
-    if (ts.isAwaitExpression(n)) out.push(V(file, lineOf(sf, n), "L2", "await は Core で禁止"));
+    if (ts.isAwaitExpression(n)) out.push(V(file, loc.line, loc.col, "L2", "await is prohibited in Core"));
     // new Date(...)
     if (ts.isNewExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "Date") {
-      out.push(V(file, lineOf(sf, n), "L2", "new Date() は非決定的IO。InitData/Action から now を注入せよ(L3)"));
+      out.push(V(file, loc.line, loc.col, "L2", "new Date() is non-deterministic IO. Inject now via InitData or Action (L3)"));
     }
     // Date.now / Math.random
     if (ts.isPropertyAccessExpression(n) && ts.isIdentifier(n.expression)) {
       const k = `${n.expression.text}.${n.name.text}`;
-      if (k === "Date.now") out.push(V(file, lineOf(sf, n), "L2", "Date.now() は非決定的。now を注入せよ(L3)"));
-      if (k === "Math.random") out.push(V(file, lineOf(sf, n), "L2", "Math.random() は非決定的。seed を注入せよ(L3)"));
+      if (k === "Date.now") out.push(V(file, loc.line, loc.col, "L2", "Date.now() is non-deterministic. Inject now (L3)"));
+      if (k === "Math.random") out.push(V(file, loc.line, loc.col, "L2", "Math.random() is non-deterministic. Inject seed (L3)"));
     }
-    // 禁止グローバル識別子（呼び出し/参照）
+    // Prohibited global identifiers (calls/references)
     if (ts.isIdentifier(n) && FORBIDDEN_GLOBALS.has(n.text)) {
       const parent = n.parent;
-      // プロパティ名側(foo.fetch)やimport束縛は除外、純粋な参照だけ拾う
+      // Exclude property names (e.g. foo.fetch) or import bindings, only grab pure references
       const isPropName = parent && ts.isPropertyAccessExpression(parent) && parent.name === n;
       const isDecl = parent && (ts.isImportSpecifier(parent) || ts.isBindingElement(parent) || ts.isParameter(parent));
-      if (!isPropName && !isDecl) out.push(V(file, lineOf(sf, n), "L2", `${n.text} は外部IO。Core で禁止`));
+      if (!isPropName && !isDecl) out.push(V(file, loc.line, loc.col, "L2", `${n.text} is external IO. Prohibited in Core`));
     }
-    // 禁止モジュールの import
+    // Prohibited module imports
     if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
       const spec = n.moduleSpecifier.text;
-      if (FORBIDDEN_IMPORT.test(spec)) out.push(V(file, lineOf(sf, n), "L2", `Core から '${spec}' の import は禁止(IO/フレームワーク混入)`));
+      if (FORBIDDEN_IMPORT.test(spec)) out.push(V(file, loc.line, loc.col, "L2", `Import of '${spec}' is prohibited in Core (framework/IO leakage)`));
     }
   });
   return out;
 }
 
 // ───────────────────────── L1 cross-feature import ─────────────────────────
-// featureName: このファイルが属する feature 名（self-test では明示指定）
+// featureName: Feature name this file belongs to (specified in self-test)
 export function checkCrossFeatureImport(file, text, featureName) {
   const sf = parse(file, text);
   const out = [];
   eachNode(sf, (n) => {
-    if ((ts.isImportDeclaration(n) || (ts.isCallExpression(n) && n.expression.kind === ts.SyntaxKind.ImportKeyword)) &&
-        n.moduleSpecifier && ts.isStringLiteral(n.moduleSpecifier ?? n.arguments?.[0])) {
-      // handled below
-    }
     if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
       const spec = n.moduleSpecifier.text;
-      // 別 feature を絶対パスで: @/features/<other>/...
-      const m = spec.match(/(?:^|\/)features\/([^/]+)\//);
-      if (m && m[1] !== featureName) {
-        out.push(V(file, lineOf(sf, n), "L1", `他 feature '${m[1]}' の内部を import（隔離違反）`));
+      const loc = locOf(sf, n);
+      
+      let absSpec = null;
+      if (spec.startsWith(".")) {
+        absSpec = resolve(dirname(file), spec);
+      } else if (spec.startsWith("@/")) {
+        const src = join(projectRoot, "src");
+        absSpec = resolve(src, spec.slice(2));
+      } else {
+        // Fallback for absolute/non-relative imports that don't use @/
+        const m = spec.match(/(?:^|\/)features\/([^/]+)\//);
+        if (m && m[1] !== featureName) {
+          out.push(V(file, loc.line, loc.col, "L1", `Direct import of adjacent feature '${m[1]}' internals`));
+        }
+        return;
       }
-      // 相対パスで隣 feature: ../<other>/...
-      const rel = spec.match(/^\.\.\/([^/]+)\//);
-      if (rel && rel[1] !== featureName) {
-        out.push(V(file, lineOf(sf, n), "L1", `相対パスで隣ディレクトリ '${rel[1]}' を import（隔離違反の疑い）`));
+      
+      const importedFeature = getFeatureNameFromPath(absSpec);
+      if (importedFeature && importedFeature !== featureName) {
+        out.push(V(file, loc.line, loc.col, "L1", `Direct import of adjacent feature '${importedFeature}' internals`));
       }
     }
   });
   return out;
 }
 
-// ───────────────────────── L4 effect-runtime（網羅）─────────────────────────
-// effect.type を discriminant にした switch があるのに assertNever/:never 終端が無ければ違反。
+// ───────────────────────── L4 effect-runtime (Exhaustiveness) ─────────────────────────
+// If there is a switch statement using effect.type as the discriminant but it lacks assertNever/:never termination, it violates exhaustiveness.
 export function checkEffectRuntime(file, text) {
   const sf = parse(file, text);
   const out = [];
   let hasEffectSwitch = false;
-  let switchLine = 0;
-  let hasNever = false; // AST で判定（コメント内の ": never" に騙されないため）
+  let switchLoc = { line: 0, col: 0 };
+  let hasNever = false; // Evaluated via AST (not fooled by comments containing ": never")
   eachNode(sf, (n) => {
     if (ts.isSwitchStatement(n)) {
       const expr = n.expression;
@@ -165,62 +280,74 @@ export function checkEffectRuntime(file, text) {
         ts.isIdentifier(expr.expression) &&
         /effect/i.test(expr.expression.text) &&
         expr.name.text === "type";
-      if (isEffectType) { hasEffectSwitch = true; switchLine = lineOf(sf, n); }
+      if (isEffectType) {
+        hasEffectSwitch = true;
+        switchLoc = locOf(sf, n);
+      }
     }
-    // never 型注釈（const _exhaustive: never = ...）
+    // never type annotation (e.g. const _exhaustive: never = ...)
     if (n.kind === ts.SyntaxKind.NeverKeyword) hasNever = true;
-    // assertNever(...) 呼び出し
+    // assertNever(...) call
     if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "assertNever") hasNever = true;
   });
-  if (!hasEffectSwitch) return out; // 共有 runEffect 経由ならそもそも switch を書かない＝OK
+  if (!hasEffectSwitch) return out; // OK if routing through shared runEffect
   if (!hasNever) {
-    out.push(V(file, switchLine, "L4",
-      "effect.type の手書き switch に網羅チェック(assertNever/:never)が無い。Effect追加が静かに無視される。共有 runEffect を使うか never 終端を入れよ"));
+    out.push(V(file, switchLoc.line, switchLoc.col, "L4",
+      "Handwritten switch on effect.type lacks exhaustiveness check (assertNever or ': never'). Effect additions might be silently ignored. Use the shared runEffect runtime or add never termination."));
   }
   return out;
 }
 
-// ───────────────────────── L5 source-purity（server 境界: page + route）─────────────────────────
-// 非決定値の「生成」(時刻/乱数/id)は err、業務集計の直書きは warn。page.tsx でも route.ts でも基準は同じ。
+// ───────────────────────── L5 source-purity (Server boundary: page + route) ─────────────────────────
+// Non-deterministic generation (time, random, ids) is an error. Direct aggregation is a warning.
 export function checkSourcePurity(file, text) {
   const sf = parse(file, text);
   const out = [];
   eachNode(sf, (n) => {
+    const loc = locOf(sf, n);
     if (ts.isNewExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "Date") {
-      out.push(V(file, lineOf(sf, n), "L5", "server境界で new Date()。時刻は source の縁で読み InitData/引数として注入せよ(L3)"));
+      out.push(V(file, loc.line, loc.col, "L5", "new Date() at server boundary. Read time at the Source edge and inject as InitData or arguments (L3)"));
     }
     if (ts.isPropertyAccessExpression(n)) {
       if (ts.isIdentifier(n.expression)) {
         const k = `${n.expression.text}.${n.name.text}`;
         if (k === "Date.now" || k === "Math.random")
-          out.push(V(file, lineOf(sf, n), "L5", `server境界で ${k}。非決定性は生成せず注入せよ(L3)`));
+          out.push(V(file, loc.line, loc.col, "L5", `${k} at server boundary. Non-determinism must be injected, not generated here (L3)`));
       }
-      // crypto.randomUUID() / crypto.getRandomValues()（globalThis.crypto 等も拾うため name で判定）
+      // crypto.randomUUID() / crypto.getRandomValues()
       if (n.name.text === "randomUUID" || n.name.text === "getRandomValues")
-        out.push(V(file, lineOf(sf, n), "L5", `server境界で ${n.name.text}()。id/乱数は生成せず注入せよ(L3)`));
+        out.push(V(file, loc.line, loc.col, "L5", `${n.name.text}() at server boundary. UUIDs/random values must be injected, not generated here (L3)`));
     }
-    // 集計の直書きは warn（detect）— prevent ではないことを明示
+    // Prohibited imports at server boundaries (e.g. uuid, nanoid)
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
+      const spec = n.moduleSpecifier.text;
+      if (spec === "uuid" || spec === "nanoid" || spec.startsWith("uuid/") || spec.startsWith("nanoid/")) {
+        out.push(V(file, loc.line, loc.col, "L5", `Import of '${spec}' is prohibited at server boundaries. IDs must be injected (L3)`));
+      }
+    }
+    // Direct reduce aggregation is a warning
     if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === "reduce") {
-      out.push({ ...V(file, lineOf(sf, n), "L5", ".reduce() による集計の直書き。core の純関数へ寄せると test/SSR/route で共有できる"), warn: true });
+      out.push({ ...V(file, loc.line, loc.col, "L5", "Direct aggregation using .reduce(). Move to a pure function in Core to share between tests, SSR, and routes"), warn: true });
     }
   });
   return out;
 }
 
-// ───────────────────────── L7 逆依存防止 ─────────────────────────
+// ───────────────────────── L7 Reverse Dependency Prevention ─────────────────────────
 export function checkSharedReverseDependency(file, text) {
   const sf = parse(file, text);
   const out = [];
   eachNode(sf, (n) => {
     if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
       const spec = n.moduleSpecifier.text;
-      // features/<any> を import しているか
+      // Importing features/<any>
       const m = spec.match(/(?:^|\/)features\/([^/]+)/);
-      // または相対パスで features/ を指しているか
+      // Importing features/ via relative path
       const rel = spec.match(/(?:\.\.\/)+features\/([^/]+)/);
       if (m || rel) {
         const featureName = m ? m[1] : rel[1];
-        out.push(V(file, lineOf(sf, n), "L7", `共通層（shared）から feature '${featureName}' の内部を import（逆依存）`));
+        const loc = locOf(sf, n);
+        out.push(V(file, loc.line, loc.col, "L7", `Shared layer imports feature '${featureName}' internals (reverse dependency)`));
       }
     }
   });
@@ -262,43 +389,43 @@ function classifyColorToken(core) {
 export function checkPresentationPurity(file, text) {
   const sf = parse(file, text);
   const out = [];
-  const seen = new Set(); // 同一行の同一トークン重複を抑制
+  const seen = new Set(); // Avoid duplicate reporting of same token on same line
 
   function scan(node, raw) {
     if (!raw) return;
-    const line = lineOf(sf, node);
+    const loc = locOf(sf, node);
     let m;
-    // arbitrary値（角括弧つき）
+    // arbitrary values (with square brackets)
     ARBITRARY_RE.lastIndex = 0;
     while ((m = ARBITRARY_RE.exec(raw))) {
-      const key = `${line}|arb|${m[0]}`;
+      const key = `${loc.line}|arb|${m[0]}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ...V(file, line, "L8",
-        `Tailwind arbitrary値 '${m[0]}' の直書き。提示語彙(theme/shared-ui)から使え`), info: true });
+      out.push({ ...V(file, loc.line, loc.col, "L8",
+        `Tailwind arbitrary value '${m[0]}'. Use theme/shared-ui tokens instead.`), info: true });
     }
-    // 生の hex（arbitrary の [...] 内は上で拾うので、括弧の中身は除いて裸の hex だけ対象）
+    // raw hex codes (excluding hex inside arbitrary brackets which are handled above)
     const bare = raw.replace(/\[[^\]]*\]/g, "");
     HEX_RE.lastIndex = 0;
     while ((m = HEX_RE.exec(bare))) {
-      const key = `${line}|hex|${m[0]}`;
+      const key = `${loc.line}|hex|${m[0]}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ...V(file, line, "L8",
-        `生の色 '${m[0]}' の直書き。theme の語彙を使え`), info: true });
+      out.push({ ...V(file, loc.line, loc.col, "L8",
+        `Raw color hex '${m[0]}'. Use theme tokens instead.`), info: true });
     }
-    // 色ユーティリティ（無彩色パレット / 色名＋透過度の隠れハードコード）を集合分類で拾う
+    // color utilities (grayscale palette / color+opacity hidden hardcoding)
     for (const token of raw.split(/\s+/)) {
       if (!token) continue;
-      const core = token.slice(token.lastIndexOf(":") + 1); // dark: / hover: 等の variant を剥がす
+      const core = token.slice(token.lastIndexOf(":") + 1); // strip hover: / dark: etc.
       const kind = classifyColorToken(core);
       if (!kind) continue;
-      const key = `${line}|col|${core}`;
+      const key = `${loc.line}|col|${core}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      out.push({ ...V(file, line, "L8", kind === "achromatic"
-        ? `無彩色パレット '${core}' の直書き。bg-background/text-foreground/bg-card/border-border 等のセマンティックトークンへ`
-        : `色名＋透過度の隠れハードコード '${core}'。bg-primary/10 等のセマンティックトークン＋透過度へ`), info: true });
+      out.push({ ...V(file, loc.line, loc.col, "L8", kind === "achromatic"
+        ? `Achromatic palette '${core}'. Migrate to semantic tokens like bg-background, text-foreground, bg-card, or border-border.`
+        : `Hidden hardcoded color/opacity '${core}'. Migrate to semantic tokens with opacity (e.g., bg-primary/10).`), info: true });
     }
   }
 
@@ -382,12 +509,12 @@ export function checkClones(files) {
     const sf = parse(file, text);
     eachNode(sf, (n) => {
       if (!ts.isJsxElement(n) && !ts.isJsxFragment(n)) return;
-      // 根 JSX だけを候補にする＝入れ子の二重報告を防ぐ。
-      // JSX 祖先を持つもの（親要素の子・.map() コールバックが返す子など）は除外する。
+      // Compare root JSX elements only to prevent duplicate nesting reports
       if (hasJsxAncestor(n)) return;
       const bag = bagOfJsx(n);
       if (bag.size < CLONE_MIN_TOKENS) return;
-      candidates.push({ file, line: lineOf(sf, n), bag });
+      const loc = locOf(sf, n);
+      candidates.push({ file, line: loc.line, col: loc.col, bag });
     });
   }
   const out = [];
@@ -398,9 +525,9 @@ export function checkClones(files) {
       if (a.file === b.file && a.line === b.line) continue;
       const sim = jaccard(a.bag, b.bag);
       if (sim >= CLONE_SIMILARITY) {
-        out.push({ ...V(b.file, b.line, "clone",
-          `UI重複の疑い（Jaccard ${sim.toFixed(2)}）: ${basename(a.file)}:${a.line} と酷似。` +
-          `同一 feature 内の完全一致なら components/ へ抽出、そうでなければ重複は許容（庭師が判断）`), info: true });
+        out.push({ ...V(b.file, b.line, b.col, "clone",
+          `Suspected UI duplication (Jaccard ${sim.toFixed(2)}): highly similar to ${basename(a.file)}:${a.line}. ` +
+          `Deduplicate into components/ if 100% identical and within the same feature, otherwise duplicate is acceptable.`), info: true });
       }
     }
   }
@@ -427,8 +554,10 @@ function collectExportUsage(typesFile, typesText, consumers, srcRoot) {
   }
 
   function remember(name, node, membrane = false) {
+    const loc = locOf(sf, node);
     exported.set(name, {
-      line: lineOf(sf, node),
+      line: loc.line,
+      col: loc.col,
       membrane: membrane || /(?:Action|Effect|State|InitData)$/.test(name),
     });
   }
@@ -497,9 +626,9 @@ export function checkDeadExports(typesFile, typesText, consumers, srcRoot) {
   const out = [];
   for (const [name, meta] of exported) {
     if (importRefs.get(name).size > 0) continue;
-    if (identifierSeen.has(name)) continue; // 低確度フォールバックで救済（再エクスポート等）
-    out.push({ ...V(typesFile, meta.line, "dead-export",
-      `export '${name}' は src/+app/ のどこからも参照されていない（死蔵契約＝共有予算の無駄）。削除候補`), info: true });
+    if (identifierSeen.has(name)) continue; // low-confidence fallback (e.g. re-exports)
+    out.push({ ...V(typesFile, meta.line, meta.col, "dead-export",
+      `Export '${name}' is not imported anywhere in src/ or app/ (dead contract / wasted sharing budget). Candidate for deletion.`), info: true });
   }
   return out;
 }
@@ -516,8 +645,8 @@ export function checkSingleOwnerExports(typesFile, typesText, consumers, srcRoot
     const owners = importRefs.get(name);
     if (owners.size !== 1) continue;
     const owner = [...owners][0];
-    out.push({ ...V(typesFile, meta.line, "single-owner-export",
-      `export '${name}' は1ファイルだけが参照している（${basename(owner)}）。所有者のそばへ移せるか確認`), info: true });
+    out.push({ ...V(typesFile, meta.line, meta.col, "single-owner-export",
+      `Export '${name}' is only imported by a single file (${basename(owner)}). Consider colocating it with its consumer.`), info: true });
   }
   return out;
 }
@@ -592,83 +721,202 @@ function runMainScan() {
   return all;
 }
 
-// 情報系（fail させない）: types.ts 行数 / tsconfig include
+// Info checks (non-blocking): types.ts line budget / tsconfig include
 function runInfoChecks() {
   const notes = [];
   const srcRoot = join(projectRoot, "src");
   for (const f of walkFiles(srcRoot, (p) => /(^|\/)types\.ts$/.test(p.replace(/\\/g, "/")))) {
     const n = readFileSync(f, "utf8").split("\n").length;
     const limit = /shared\//.test(f.replace(/\\/g, "/")) ? 250 : 200;
-    if (n > limit) notes.push(`types.ts 共有予算超過: ${relative(projectRoot, f)} = ${n}行 (> ${limit})`);
+    if (n > limit) notes.push(`types.ts sharing budget exceeded: ${relative(projectRoot, f)} = ${n} lines (> ${limit})`);
   }
   const tsconfigP = join(projectRoot, "tsconfig.json");
   if (existsSync(tsconfigP)) {
     const tc = readFileSync(tsconfigP, "utf8");
     const includesApp = /"app[\/*]|\*\*\/\*\.tsx?"/.test(tc) || /"include"[\s\S]*app/.test(tc);
-    if (!includesApp) notes.push("tsconfig.json の include が app/ を覆っていない可能性（server↔client 型契約が tsc で検証されない）");
+    if (!includesApp) notes.push("tsconfig.json include might not cover app/ (server-client contracts won't be verified by tsc)");
   }
   return notes;
 }
 
-// ───────────────────────── L6 self-test（検証器の検証）─────────────────────────
+// ───────────────────────── L6 self-test (Verifier Self-Verification) ─────────────────────────
 function runSelfTest() {
   const F = (name) => join(FIXTURES, name);
   const read = (name) => readFileSync(F(name), "utf8");
   const cases = [
-    { exec: () => checkCorePurity(F("bad-core.core.ts"), read("bad-core.core.ts")), expect: ">=1", label: "L2 が new Date/await/prisma 等を弾く" },
-    { exec: () => checkCorePurity(F("good.core.ts"), read("good.core.ts")), expect: "==0", label: "L2 が正しい Core を誤検出しない" },
-    { exec: () => checkCrossFeatureImport(F("bad-cross-import.ts"), read("bad-cross-import.ts"), "alpha"), expect: ">=1", label: "L1 が隣 feature import を弾く" },
-    { exec: () => checkEffectRuntime(F("bad-shell-switch.shell.tsx"), read("bad-shell-switch.shell.tsx")), expect: ">=1", label: "L4 が網羅欠落の手書き switch を弾く" },
-    { exec: () => checkSharedReverseDependency(F("bad-shared-import.shared.ts"), read("bad-shared-import.shared.ts")), expect: ">=1", label: "L7 が shared から feature への逆依存を弾く" },
-    { exec: () => checkSharedReverseDependency(F("good-shared.shared.ts"), read("good-shared.shared.ts")), expect: "==0", label: "L7 が正しい shared を誤検出しない" },
-    // L5(route): route.ts の非決定生成を弾く / 正しい route を誤検出しない
-    { exec: () => checkSourcePurity(F("bad-route.route.ts"), read("bad-route.route.ts")), expect: ">=1", label: "L5 が route の new Date/randomUUID 生成を弾く" },
-    { exec: () => checkSourcePurity(F("good-route.route.ts"), read("good-route.route.ts")), expect: "==0", label: "L5 が注入済みの正しい route を誤検出しない" },
-    // L8: 生色/arbitrary値の直書きを拾う / 正しい提示語彙は誤検出しない
-    { exec: () => checkPresentationPurity(F("bad-presentation.shell.tsx"), read("bad-presentation.shell.tsx")), expect: ">=1", label: "L8 が生色/arbitrary値の直書きを拾う" },
-    { exec: () => checkPresentationPurity(F("good-presentation.shell.tsx"), read("good-presentation.shell.tsx")), expect: "==0", label: "L8 が theme 参照だけの提示を誤検出しない" },
-    // clone(B3): 順不同 className の UI 重複を検知 / 異なる UI は誤検出しない
-    { exec: () => checkClones([
+    {
+      exec: () => checkCorePurity(F("bad-core.core.ts"), read("bad-core.core.ts")),
+      expect: [
+        { rule: "L2", line: 6 },
+        { rule: "L2", line: 8 },
+        { rule: "L2", line: 9 },
+        { rule: "L2", line: 10 },
+        { rule: "L2", line: 11 },
+        { rule: "L2", line: 12 },
+        { rule: "L2", line: 13 },
+        { rule: "L2", line: 13 }
+      ],
+      label: "L2 rejects new Date/await/prisma in Core"
+    },
+    {
+      exec: () => checkCorePurity(F("good.core.ts"), read("good.core.ts")),
+      expect: [],
+      label: "L2 does not trigger false positives on a clean Core"
+    },
+    {
+      exec: () => checkCrossFeatureImport(F("bad-cross-import.ts"), read("bad-cross-import.ts"), "alpha"),
+      expect: [
+        { rule: "L1", line: 5 },
+        { rule: "L1", line: 6 }
+      ],
+      label: "L1 rejects direct adjacent feature imports"
+    },
+    {
+      exec: () => checkEffectRuntime(F("bad-shell-switch.shell.tsx"), read("bad-shell-switch.shell.tsx")),
+      expect: [
+        { rule: "L4", line: 7 }
+      ],
+      label: "L4 rejects handwritten switch lacking exhaustiveness check"
+    },
+    {
+      exec: () => checkSharedReverseDependency(F("bad-shared-import.shared.ts"), read("bad-shared-import.shared.ts")),
+      expect: [
+        { rule: "L7", line: 1 },
+        { rule: "L7", line: 2 }
+      ],
+      label: "L7 rejects reverse dependency imports from shared to features"
+    },
+    {
+      exec: () => checkSharedReverseDependency(F("good-shared.shared.ts"), read("good-shared.shared.ts")),
+      expect: [],
+      label: "L7 does not trigger false positives on a clean shared layer"
+    },
+    // L5(route): rejects non-deterministic generation in routes / avoids false positives
+    {
+      exec: () => checkSourcePurity(F("bad-route.route.ts"), read("bad-route.route.ts")),
+      expect: [
+        { rule: "L5", line: 6 },
+        { rule: "L5", line: 9 },
+        { rule: "L5", line: 10 },
+        { rule: "L5", line: 11 } // warning from reduce
+      ],
+      label: "L5 rejects new Date/randomUUID generation and uuid import in routes"
+    },
+    {
+      exec: () => checkSourcePurity(F("good-route.route.ts"), read("good-route.route.ts")),
+      expect: [],
+      label: "L5 does not trigger false positives on a clean route"
+    },
+    // L8: flags raw colors and arbitrary values / avoids false positives
+    {
+      exec: () => checkPresentationPurity(F("bad-presentation.shell.tsx"), read("bad-presentation.shell.tsx")),
+      expect: [
+        { rule: "L8", line: 8 },
+        { rule: "L8", line: 8 },
+        { rule: "L8", line: 8 },
+        { rule: "L8", line: 8 },
+        { rule: "L8", line: 9 },
+        { rule: "L8", line: 9 },
+        { rule: "L8", line: 9 },
+        { rule: "L8", line: 10 },
+        { rule: "L8", line: 10 },
+        { rule: "L8", line: 11 }
+      ],
+      label: "L8 flags raw colors and arbitrary values"
+    },
+    {
+      exec: () => checkPresentationPurity(F("good-presentation.shell.tsx"), read("good-presentation.shell.tsx")),
+      expect: [],
+      label: "L8 does not trigger false positives on clean presentation"
+    },
+    // clone(B3): detects UI duplication ignoring className order / avoids false positives
+    {
+      exec: () => checkClones([
         { file: F("clone-a.shell.tsx"), text: read("clone-a.shell.tsx") },
         { file: F("clone-b.shell.tsx"), text: read("clone-b.shell.tsx") }]),
-      expect: ">=1", label: "clone が順不同 className の UI 重複を検知する" },
-    { exec: () => checkClones([
+      expect: [
+        { rule: "clone", line: 8 }
+      ],
+      label: "clone detects UI duplication ignoring className order"
+    },
+    {
+      exec: () => checkClones([
         { file: F("clone-a.shell.tsx"), text: read("clone-a.shell.tsx") },
         { file: F("clone-distinct.shell.tsx"), text: read("clone-distinct.shell.tsx") }]),
-      expect: "==0", label: "clone が異なる UI を誤検出しない" },
-    // clone(B3): 親ul + map内li の親子入れ子は誤検出しない
-    { exec: () => checkClones([
+      expect: [],
+      label: "clone does not trigger false positives on distinct UIs"
+    },
+    // clone(B3): avoids false positives on map callback nestings
+    {
+      exec: () => checkClones([
         { file: F("clone-map-callback.shell.tsx"), text: read("clone-map-callback.shell.tsx") }]),
-      expect: "==0", label: "clone が map コールバックの親子入れ子を誤検出しない" },
-    // dead-export: DeadType は誰も import しない → 検知必須
-    { exec: () => checkDeadExports(F("dead-export.types.ts"), read("dead-export.types.ts"),
+      expect: [],
+      label: "clone does not trigger false positives on map callback nestings"
+    },
+    // dead-export: flags unused exports / avoids false positives
+    {
+      exec: () => checkDeadExports(F("dead-export.types.ts"), read("dead-export.types.ts"),
         [{ file: F("dead-export.consumer.ts"), text: read("dead-export.consumer.ts") }], null),
-      expect: ">=1", label: "dead-export が死蔵 export を弾く" },
-    // shared-export: 2消費者が import → 誤検知してはならない
-    { exec: () => checkDeadExports(F("shared-export.types.ts"), read("shared-export.types.ts"),
+      expect: [
+        { rule: "dead-export", line: 7 }
+      ],
+      label: "dead-export flags unused exports"
+    },
+    {
+      exec: () => checkDeadExports(F("shared-export.types.ts"), read("shared-export.types.ts"),
         [{ file: F("shared-export.consumer-a.ts"), text: read("shared-export.consumer-a.ts") },
          { file: F("shared-export.consumer-b.ts"), text: read("shared-export.consumer-b.ts") }], null),
-      expect: "==0", label: "dead-export が共有 export を誤検知しない" },
-    // single-owner: LocalOnly は1消費者だけが import → 検知必須
-    { exec: () => checkSingleOwnerExports(F("single-owner-export.types.ts"), read("single-owner-export.types.ts"),
+      expect: [],
+      label: "dead-export does not flag shared exports"
+    },
+    // single-owner: flags single-owner exports / excludes membrane vocabulary / avoids false positives
+    {
+      exec: () => checkSingleOwnerExports(F("single-owner-export.types.ts"), read("single-owner-export.types.ts"),
         [{ file: F("single-owner-export.consumer.ts"), text: read("single-owner-export.consumer.ts") }], null),
-      expect: ">=1", label: "single-owner-export が単独所有 export を検知する" },
-    // single-owner: 膜語彙は1消費者でも除外
-    { exec: () => checkSingleOwnerExports(F("single-owner-export.types.ts"), read("single-owner-export.types.ts"),
+      expect: [
+        { rule: "single-owner-export", line: 6 }
+      ],
+      label: "single-owner-export flags single-owner exports"
+    },
+    {
+      exec: () => checkSingleOwnerExports(F("single-owner-export.types.ts"), read("single-owner-export.types.ts"),
         [{ file: F("single-owner-export.consumer.ts"), text: read("single-owner-export.consumer.ts") }], null)
           .filter((v) => /Action/.test(v.msg)),
-      expect: "==0", label: "single-owner-export が膜語彙を除外する" },
-    // shared-export: 2消費者が import → single-owner も誤検知してはならない
-    { exec: () => checkSingleOwnerExports(F("shared-export.types.ts"), read("shared-export.types.ts"),
+      expect: [],
+      label: "single-owner-export excludes membrane vocabulary"
+    },
+    {
+      exec: () => checkSingleOwnerExports(F("shared-export.types.ts"), read("shared-export.types.ts"),
         [{ file: F("shared-export.consumer-a.ts"), text: read("shared-export.consumer-a.ts") },
          { file: F("shared-export.consumer-b.ts"), text: read("shared-export.consumer-b.ts") }], null),
-      expect: "==0", label: "single-owner-export が共有 export を誤検知しない" },
+      expect: [],
+      label: "single-owner-export does not flag shared exports"
+    }
   ];
   const failures = [];
   for (const c of cases) {
-    const vs = c.exec().filter((v) => !v.warn);
-    const ok = c.expect === ">=1" ? vs.length >= 1 : vs.length === 0;
-    if (!ok) failures.push(`self-test 失敗: ${c.label} （期待 ${c.expect}, 実際 ${vs.length}） → 検証器が壊れている`);
+    const vs = c.exec();
+    
+    // Sort logic to match expected and actual elements consistently
+    const sortFn = (a, b) => a.line - b.line || a.rule.localeCompare(b.rule);
+    const actualSorted = vs.map(v => ({ rule: v.rule, line: v.line })).sort(sortFn);
+    const expectedSorted = c.expect.sort(sortFn);
+    
+    let ok = actualSorted.length === expectedSorted.length;
+    if (ok) {
+      for (let i = 0; i < actualSorted.length; i++) {
+        if (actualSorted[i].rule !== expectedSorted[i].rule || actualSorted[i].line !== expectedSorted[i].line) {
+          ok = false;
+          break;
+        }
+      }
+    }
+    
+    if (!ok) {
+      const actualStr = JSON.stringify(actualSorted);
+      const expectedStr = JSON.stringify(expectedSorted);
+      failures.push(`self-test failed: ${c.label}\n    expected: ${expectedStr}\n    got:      ${actualStr}`);
+    }
   }
   return failures;
 }
@@ -678,7 +926,7 @@ function runSelfTest() {
 function emitJson(payload) {
   if (JSON_OUT === undefined) return;
   const relV = (v) => ({
-    rule: v.rule, file: relative(projectRoot, v.file), line: v.line, msg: v.msg,
+    rule: v.rule, file: relative(projectRoot, v.file), line: v.line, col: v.col ?? 1, msg: v.msg,
   });
   const body = {
     tool: "membrain-verify",
@@ -705,16 +953,16 @@ function group(viols) {
 
 console.log(`\n[Membrain verify] target = ${projectRoot}\n`);
 
-// L6 を最初に。検証器が壊れていたら以降の緑は信用できない。
+// Run L6 self-test first. If the verifier is broken, subsequent greens cannot be trusted.
 const selfFail = runSelfTest();
 if (selfFail.length) {
-  console.error("✗ L6 self-test（検証器の自己検証）に失敗:");
+  console.error("✗ L6 self-test (Verifier Self-Verification) failed:");
   selfFail.forEach((m) => console.error("   " + m));
-  console.error("\n検証器自体が機能していないため、他の結果は信用できない。verify を修正せよ。\n");
+  console.error("\nThe verifier itself is malfunctioning. Other results cannot be trusted. Fix verify.mjs.\n");
   emitJson({ selfTest: { ok: false, failures: selfFail }, status: "red" });
   process.exit(1);
 }
-console.log("✓ L6 self-test: 検証器は仕込んだ違反を正しく弾き、正しいコードを誤検出しない\n");
+console.log("✓ L6 self-test: Verifier correctly rejects planted violations and avoids false positives.\n");
 
 const viols = runMainScan();
 const errors = viols.filter((v) => !v.warn && !v.info);
@@ -722,38 +970,66 @@ const warns = viols.filter((v) => v.warn);
 const infoViols = viols.filter((v) => v.info);
 const notes = runInfoChecks();
 
-const byRule = group(errors);
 let failed = false;
-for (const rule of ["L1", "L2", "L4", "L5", "L7"]) {
-  const list = byRule[rule] || [];
-  if (rule === "L5") continue; // L5 は下で warn/err 混在表示
-  if (list.length === 0) { console.log(`✓ ${rule}: 違反なし`); continue; }
+
+if (errors.length > 0) {
   failed = true;
-  console.log(`✗ ${rule}: ${list.length} 件`);
-  for (const v of list) console.log(`   ${relative(projectRoot, v.file)}:${v.line}  ${v.msg}`);
+  console.log(`✗ Violations (Errors): ${errors.length} case(s)`);
+  for (const v of errors) {
+    const details = getViolationDetails(v);
+    const relPath = relative(projectRoot, v.file);
+    const codeLine = getFileLine(v.file, v.line).trim();
+    console.log(`✗ [${v.rule}] [${details.name}]`);
+    console.log(`  --> ${relPath}:${v.line}:${v.col ?? 1}`);
+    console.log(`  Code: ${codeLine}`);
+    console.log(`  Why: ${details.why}`);
+    console.log(`  Fix: ${details.fix}`);
+    console.log("");
+  }
+} else {
+  console.log("✓ Laws (L1, L2, L4, L5, L7): No violations");
 }
 
-// L5（err と warn を分けて表示。err は fail、warn は情報）
-const l5err = errors.filter((v) => v.rule === "L5");
-if (l5err.length) { failed = true; console.log(`✗ L5: ${l5err.length} 件（server純度）`);
-  for (const v of l5err) console.log(`   ${relative(projectRoot, v.file)}:${v.line}  ${v.msg}`); }
-else console.log("✓ L5: server純度 違反なし");
+if (warns.length > 0) {
+  console.log(`\nⓘ Warnings (detect layer - non-blocking): ${warns.length} case(s)`);
+  for (const v of warns) {
+    const details = getViolationDetails(v);
+    const relPath = relative(projectRoot, v.file);
+    const codeLine = getFileLine(v.file, v.line).trim();
+    console.log(`⚠ [${v.rule}] [${details.name}]`);
+    console.log(`  --> ${relPath}:${v.line}:${v.col ?? 1}`);
+    console.log(`  Code: ${codeLine}`);
+    console.log(`  Why: ${details.why}`);
+    console.log(`  Fix: ${details.fix}`);
+    console.log("");
+  }
+}
 
-if (warns.length) {
-  console.log(`\nⓘ warn（detect層・fail させない）: ${warns.length} 件`);
-  for (const v of warns) console.log(`   ${relative(projectRoot, v.file)}:${v.line}  ${v.msg}`);
+if (infoViols.length > 0) {
+  console.log(`\nⓘ Info (non-blocking - burn-in phase): ${infoViols.length} case(s)`);
+  for (const v of infoViols) {
+    const details = getViolationDetails(v);
+    const relPath = relative(projectRoot, v.file);
+    const codeLine = getFileLine(v.file, v.line).trim();
+    console.log(`ⓘ [${v.rule}] [${details.name}]`);
+    console.log(`  --> ${relPath}:${v.line}:${v.col ?? 1}`);
+    console.log(`  Code: ${codeLine}`);
+    console.log(`  Why: ${details.why}`);
+    console.log(`  Fix: ${details.fix}`);
+    console.log("");
+  }
 }
-if (infoViols.length) {
-  console.log(`\nⓘ info（fail させない・burn-in 中）: ${infoViols.length} 件`);
-  for (const v of infoViols) console.log(`   ${relative(projectRoot, v.file)}:${v.line}  ${v.msg}`);
+
+if (notes.length) {
+  console.log("\nⓘ Info:");
+  notes.forEach((m) => console.log("   " + m));
 }
-if (notes.length) { console.log("\nⓘ info:"); notes.forEach((m) => console.log("   " + m)); }
 
 if (RUN_TSC) {
   console.log("\n[tsc --noEmit] ...");
   const { spawnSync } = await import("node:child_process");
   const r = spawnSync("npx", ["tsc", "--noEmit"], { cwd: projectRoot, stdio: "inherit", shell: true });
-  if (r.status !== 0) { failed = true; console.log("✗ tsc 失敗"); } else console.log("✓ tsc 通過");
+  if (r.status !== 0) { failed = true; console.log("✗ tsc failed"); } else console.log("✓ tsc passed");
 }
 
 emitJson({
@@ -763,5 +1039,5 @@ emitJson({
 });
 
 console.log("");
-if (failed) { console.error("verify: 赤（上記の違反を直すまでマージ不可）\n"); process.exit(1); }
-console.log("verify: 緑\n");
+if (failed) { console.error("verify: Red (merge blocked until violations are resolved)\n"); process.exit(1); }
+console.log("verify: Green\n");

@@ -3,40 +3,40 @@
 The actual running implementation of `MEMBRAIN.md` §1 (Laws) and §3 (Verification Contract).
 This codebase serves as concrete proof of the core thesis: "Invariants are physically enforced by tools, not by prose."
 
-## Why AST and Not Grep? (The reason this tool exists)
+## Why AST Analysis Over Simple Regex?
 
-The Core purity check in the old `BENCHMARK_PROTOCOL.md` relied on grep:
+The Core purity check in the original benchmark protocol relied on regex scanning:
 
 ```sh
 grep -rn "Date.now\|Math.random\|fetch(" src/features/*/core.ts   # ← Misses `new Date()`
 ```
 
-This failed to detect `new Date()` and produced a **false green**. In fact, there were 6 instances of `new Date()` in the Core of `iotawise`, but the benchmark reported "Purity OK".
+This failed to detect `new Date()` calls and produced a **false green**. The `iotawise` codebase contained six instances of `new Date()` inside its Core layer, yet the grep-based benchmark reported "Purity OK".
 
-`verify.mjs` walks the TypeScript AST (Abstract Syntax Tree) to detect syntax. This represents the **prevent-strong** level in the reliability hierarchy (prevent-strong > prevent-weak > detect > hope).
+`verify.mjs` traverses the TypeScript AST (Abstract Syntax Tree) to inspect the structure of the code. This achieves a **strong-prevention** guarantee in the architectural reliability hierarchy (strong-prevention > weak-prevention > detection > hope).
 
 ## Checks Performed (Corresponding to `MEMBRAIN.md` §1)
 
-| Law | Target | Detection |
+| Law / Rule | Target | Detection (Diagnostic Name) |
 |---|---|---|
-| L1 | `src/features/**` | Imports from other features (isolation violation). |
-| L2 | `**/core.ts` | `async` / `await` / `new Date` / `Date.now` / `Math.random` / `fetch` / `window` / `document` / `localStorage` / `prisma` imports (purity violation). |
-| L4 | `**/shell.tsx` | Handwritten `switch` on `effect.type` without `assertNever` / `: never` termination (exhaustiveness violation). |
-| L5 | `app/**/page.tsx`, `app/**/route.ts` | Direct non-deterministic writes at server boundaries (`new Date`/`Date.now`/`Math.random`/`crypto.randomUUID` = err) / direct aggregation (`.reduce()` = warn). Both pages and routes undergo the same AST inspection. |
-| L7 | `src/shared/**` | `shared/*` importing from `features/*` (reverse dependency / isolation violation). |
+| L1 | `src/features/**` | Imports from other features (**Isolation** violation). |
+| L2 | `**/core.ts` | Async, await, new Date, Date.now, Math.random, fetch, window, document, localStorage, or prisma usage (**Purity** violation). |
+| L4 | `**/shell.tsx` | Handwritten `switch` on `effect.type` without `assertNever` / `: never` termination (**Exhaustiveness** violation). |
+| L5 | `app/**/page.tsx`, `app/**/route.ts` | Direct non-deterministic generation (`new Date`/`Date.now`/`Math.random`/`crypto.randomUUID` = err) / direct aggregation (`.reduce()` = warn) at server boundaries (**Source Purity** violation). Both pages and routes undergo the same AST inspection. |
+| L7 | `src/shared/**` | `shared/*` importing from `features/*` (**Reverse Dependency Prevention** violation). |
 | L6 | `verify/fixtures/` | **Verifier self-verification**. Enforces that known violations are rejected and correct files are not false-positived. |
-| L8 | `features/**/shell.tsx`, `features/**/components/**` | Direct use of raw colors (`#hex`), arbitrary values (`bg-[...]`), **non-semantic grayscale palettes**, or **hidden hardcoded color/opacity** (`fuchsia-400/10`, etc.). **info / burn-in (does not fail)**. |
-| clone | `features/**/shell.tsx`, `features/**/components/**` | Duplication of UI (JSX/className). Checks classNames as sets to absorb Tailwind order variations, using Jaccard similarity. Excludes children JSX returned inside `.map()` callbacks to prevent false positives in parent-child nestings. **info / burn-in (does not fail)**. |
-| info | `**/types.ts`, `tsconfig.json` | Sharing budget lines / checks if includes cover `app/` (does not fail). |
-| info | `features/**/types.ts` exports | **dead-export**: Exported contracts that are not imported anywhere in `src/` or `app/` (wasted sharing budget). Does not fail during burn-in. |
-| info | `features/**/types.ts` exports | **single-owner-export**: Local contracts imported by only one file. Excludes membrane vocabulary like Action/Effect/State/InitData. Never fails. |
+| L8 | `features/**/shell.tsx`, `features/**/components/**` | Direct use of raw colors (`#hex`), arbitrary values (`bg-[...]`), non-semantic grayscale palettes, or hidden hardcoded color/opacity (**Presentation Purity** violation, info/burn-in only). |
+| clone | `features/**/shell.tsx`, `features/**/components/**` | UI duplication based on JSX structure and Jaccard similarity of classNames (**UI Duplication** info/burn-in). |
+| info | `**/types.ts`, `tsconfig.json` | types.ts line budget check (shared = 250, feature = 200) / tsconfig app inclusion. |
+| dead-export | `features/**/types.ts` exports | Exported contracts that are not imported anywhere in `src/` or `app/` (**Dead Export** info). |
+| single-owner-export | `features/**/types.ts` exports | Local contracts imported by only one file, excluding Action/Effect/State/InitData (**Single Owner Export** info). |
 
-L6 is the backbone. Without it, L1–L5 revert to "hope" at the meta-level: we would say "enforce with tools" but wouldn't know if the checks were empty. **Even if the Form is free, this self-verification cannot be waived.**
+The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
 
 ### L8 Color Token Evaluation (Details on Presentation Purity)
 
-L8 does not "simply ban color." It **specifically info-flags design drift culprits while allowing harmless status colors**.
-The target is threefold: "Bind general tone & manner to semantic tokens, suppress hidden hardcoded color+opacity, and allow standard Tailwind for status display." This avoids both false positives (ruining dev experience) and bypasses (leaving drift unchecked).
+L8 does not indiscriminately ban color. Instead, it **flags high-risk indicators of design drift while allowing standard utility colors**.
+Its goal is threefold: align typography and layouts to semantic tokens, restrict color/opacity overrides, and permit utility colors for status indicators. This avoids unnecessary developer friction while keeping design systems aligned.
 
 | Classification | Example | Evaluation | Suggested Migration Target |
 |---|---|---|---|
@@ -47,9 +47,9 @@ The target is threefold: "Bind general tone & manner to semantic tokens, suppres
 | Status Colors (Escape Hatch) | `bg-red-50` (error) / `text-green-600` (success) / `bg-amber-100` (warn) / `text-blue-800` (info) | **Allowed** | — |
 | Semantic Tokens | `bg-primary` / `border-border` / `bg-card/20` (opacity allowed) | **Allowed** | — |
 
-- **Grayscales** (`gray`/`slate`/`zinc`/`neutral`/`stone`/`white`/`black`) dictate the "outer shell colors" of containers, text, and borders. They must be aligned to semantic tokens (drift here is the primary cause of "looking like a different app").
-- **Color + Opacity** (`<color>-<shade>/NN` or `/[...]`) are hidden hardcodings that bypass hex detection but lock in a specific color's opacity, blocking light/dark mode adaptation. Replace with semantic tokens + opacity (defining CSS variables as HSL/RGB values so Tailwind's opacity modifier works, e.g., `bg-primary/10`).
-- **Status Colors** (`red`/`green`/`emerald`/`orange`/`amber`/`yellow`/`blue`/`sky`) frequently appear in alerts/badges with fixed semantic meanings, and are thus **allowed** (including with opacity). Enforcing rules here yields too much noise.
+- **Grayscale utilities** dictate the background, text, and border styling of structural frames. They must be resolved to semantic tokens (e.g., `bg-background` or `text-foreground`), as divergence in grayscales is the primary source of visual inconsistency across different pages.
+- **Opacity modifiers** attached to raw colors (e.g., `bg-fuchsia-400/10`) lock in specific hues, which blocks them from adapting to light/dark modes. Replace these with semantic tokens combined with opacity (such as `bg-primary/10`).
+- **Status-related colors** (`red`/`green`/`emerald`/`orange`/`amber`/`yellow`/`blue`/`sky`) are widely used for notifications, badges, and alerts. They are **allowed** (including with opacity modifiers) because restricting them produces excessive noise with minimal architectural benefit.
 - Everything is **info/burn-in (does not fail)**. Cleanup targets are generated by `npm run garden` as a gardening instruction document.
 
 ## Usage
@@ -86,7 +86,7 @@ The fix was to change to AST-based evaluation (inspecting for `NeverKeyword` nod
 ## Limitations (Honest Disclosure)
 
 - **L5 is close to detect**. Server boundary (page/route) aggregation is a "warning" rather than a "fail" because AST cannot strictly determine if code constitutes business logic. This remains a hope-adjacent area. Generating non-deterministic values (`new Date`/`Date.now`/`Math.random`/`crypto.randomUUID`) is strictly an err. Routes are allowed to perform IO (`await` fetch/DB), so the IO itself is not target of L5 (only generation and direct aggregation are restricted).
-- **L1 relative import evaluation is heuristic** (`../<other>/`). Refinement is required depending on your path aliases configuration.
+- **L1 relative import evaluation is robust**. It resolves paths using `path.resolve`, ensuring accurate cross-feature boundaries regardless of import depth or path structure.
 - **L8 is a heuristic based on color sets**. It flags grayscales and color+opacity, while allowing status colors and semantic tokens. It is not perfect and can miss new Tailwind aliases, acting purely as an **info/burn-in**. True UI alignment (fonts, rounded corners, overall feel) lies outside color tokens, handled by the `frontend-design` skill / human reviews.
 - **Clone detection is a heuristic (Jaccard similarity ≥ 0.9, token count ≥ 5)**. It compares the set of "child tag names + className tokens" for root JSX elements. Since it compares classNames as sets, **it is unaffected by Tailwind class ordering**. Child JSX returned by `.map()` is excluded from parent comparison to avoid false nesting duplicates. It merely flags **suspected** duplications as info. Deciding whether to dry up duplication is left to the gardener/human.
 - **Does not check semantic intent**. Green `verify` does not guarantee the app behaves correctly. It only ensures borders aren't broken and the structure is clean (`MEMBRAIN.md` §4.5).

@@ -3,6 +3,7 @@
  * server 境界(route.ts)で非決定値を直書き生成し、業務集計まで直書きしている
  * → L5 が err(new Date/crypto.randomUUID) と warn(reduce) で拾うべき。
  */
+import { v4 } from "uuid";
 export async function POST(req: Request) {
   const body = await req.json();
   const id = crypto.randomUUID(); // ← 非決定 id を境界で生成（err）
