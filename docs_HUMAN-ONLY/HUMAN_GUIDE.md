@@ -1,57 +1,137 @@
-# Membrain Human Guide & Architectural Overview
+# Membrain — AI-First Vibe Coding Guide & Architecture
 
-Welcome to Membrain. This document provides a human-centric overview of the Membrain architecture, its philosophy, and developer guide.
+Welcome to Membrain. This guide outlines how Membrain enables ultra-high-velocity **AI-First Vibe Coding** by defining clean, tool-verified boundaries between pure logic and side effects.
 
-> **Note for AI Developers**: Do not read this file. Refer directly to [MEMBRAIN.md](file:///MEMBRAIN.md) for execution rules.
-
----
-
-## What is Membrain?
-
-Membrain is a Next.js development architecture designed from the ground up to be **AI-friendly**. It optimizes the collaboration between humans and Generative AI (e.g., 90% AI / 10% Human workflow) by enforcing strict, tool-verified architectural boundaries.
-
-The core metaphor of Membrain is a **semipermeable membrane** surrounding the business logic of your application.
-
-> **The Membrane Rule**:
-> *Only data crosses the Core boundary. No IO enters, and no calculation escapes.*
+> **Note for AI Developers**: Do not read this file. Refer directly to [MEMBRAIN.md](../MEMBRAIN.md) for execution rules.
 
 ---
 
-## Architectural Philosophy & Benefits
+## 1. The Core Vision: AI Writes, Humans Fine-tune
 
-### 1. Token & Complexity Reduction
-In standard React/Next.js projects, feature coupling makes the codebase hard for AI to reason about. AI must read dozens of files just to change a small button.
-Membrain solves this via **L1 Isolation** (Cross-feature imports are banned). When modifying Feature B, you do not need to load or understand Feature A. This keeps the AI context window small and prevents regressions.
+In standard development, writing state machines, validation rules, and integration boilerplate is tedious. Under the Membrain model:
 
-### 2. Core Purity
-All business calculations must reside in pure, synchronous functions within `*/core.ts` (L2 Purity). There is no asynchronous logic, time generation, or API calls inside the Core. This makes logic highly testable, predictable, and simple for AI to generate.
-
-### 3. AST-based Physical Enforcement
-Prose instructions like "please do not import this" are easily forgotten by AI (and humans). We call these **hope prompts**.
-Membrain replaces hope with **mechanical verification** (`verify.mjs` walking the TypeScript AST). If a rule is violated, `npm run verify` fails. The AI's job is not to memorize rules, but to fix code until the verifier turns green.
-
-### 4. The Gardener Workflow
-*   **Humans** write rapid layouts, inline Tailwind CSS (including arbitrary values like `bg-[#ff0000]`), and prototypes.
-*   **AI** acts as the "gardener" (`npm run garden`) to clean up raw CSS values, refactor duplicates, and extract them into shared UI design tokens or variants.
+* **AI-First Development**: **AI writes 100% of the initial codebase**—both the pure business logic in `core.ts` and the UI structure in `shell.tsx` or `components/`.
+* **Optional Human Intervention**: You are not a mandatory bottleneck. If the AI's generation works, you can ship it. However, if the UI needs to be pixel-perfect, or if the design demands subjective refinement, **you can step in to tweak the layout, styles, or CSS at any time**. 
+* **Zero Arbitrary Percentages**: There are no rigid quotas (like "90% AI / 10% Human"). You choose when and where to write code.
 
 ---
 
-## Folder Structure (Default Form)
+## 2. Bridging Membrain to Next.js
+
+If you have built Next.js apps before, Membrain reorganizes your code to keep the AI from entangling features. Here is how Membrain's boundary concepts map to standard Next.js building blocks:
+
+| Membrain Component | Next.js Mapping & Role | Directory |
+| :--- | :--- | :--- |
+| **Core** | **Pure Logic Layer**. Reducer-like functions (`init`, `update`). Contains zero async, zero fetch, and no time generation. Safe to run anywhere. | `features/*/core.ts` |
+| **Shell** | **Client Component State Wiring**. Binds the state to UI layout. Translates user interactions into `Action`s. | `features/*/shell.tsx` |
+| **Source** (Edge) | **Non-deterministic Gateways**. Reads current time, generates UUIDs, or performs database/API fetch (RSC edge). | `shared/source.ts` |
+| **Effect** | **Side-effect Executor**. The single point of dispatch for router navigation, toast notifications, and client fetch. | `shared/runEffect.ts` |
+
+---
+
+## 3. The Data Flow Loop
+
+Rather than scattering async states, data flows in a single predictable loop:
 
 ```txt
-app/layout.tsx                      ← Outer shell & frame shared across all pages
-src/shared/ui/*                     ← Feature-independent UI primitives (Button, Card, etc.)
-src/shared/runEffect.ts             ← The runtime where side-effects actually execute
-src/shared/source.ts                ← The edge for reading non-deterministic inputs (time, API)
-src/features/<feature_name>/
-  ├── types.ts                      ← The membrane contract (discriminated unions)
-  ├── core.ts                       ← Pure functions (init, update, summarize)
-  ├── shell.tsx                     ← Thin UI shell wiring state and dispatching actions
-  └── components/                   ← Feature-specific UI components (duplication allowed)
+[UI (Shell / Component)] ➔ Action ➔ [Core (core.ts / Pure)] ➔ New State & Effect
+           ▲                                                      │         │
+           │───────────── Rerenders UI with New State ────────────┘         ▼
+           └────────────── Returns result as a new Action ─────────── [runEffect.ts]
+```
+
+### Before vs. After Code Comparison
+
+#### Before (Coupled Next.js Component)
+A typical React component containing UI, non-deterministic values (`new Date()`), and side effects (`fetch`) tangled together. This is highly prone to AI regression.
+
+```typescript
+// src/components/Counter.tsx (Client Component)
+'use client';
+import { useState, useEffect } from 'react';
+
+export default function Counter() {
+  const [count, setCount] = useState(0);
+  const [lastUpdated, setLastUpdated] = useState('');
+
+  useEffect(() => {
+    // ❌ Side Effect inside UI (untracked)
+    fetch(`/api/log?count=${count}`);
+  }, [count]);
+
+  const handleIncrement = () => {
+    setCount(count + 1);
+    // ❌ Non-deterministic value inside UI (untestable)
+    setLastUpdated(new Date().toISOString());
+  };
+
+  return (
+    <div>
+      <p>Count: {count} (Updated: {lastUpdated})</p>
+      <button onClick={handleIncrement}>Increment</button>
+    </div>
+  );
+}
+```
+
+#### After (Membrain Separation)
+The UI remains simple, while the calculations and side effects are separated. AI can safely regenerate the math in `core.ts` without touching your CSS.
+
+```typescript
+// 1. src/features/counter/core.ts (Pure calculations)
+export function update(state: State, action: Action): { nextState: State; effect?: Effect } {
+  switch (action.type) {
+    case 'INCREMENT':
+      return {
+        nextState: {
+          ...state,
+          count: state.count + 1,
+          lastUpdated: action.now, // ✅ Non-deterministic time injected from edge via Action
+        },
+        effect: { type: 'LOG_COUNT', count: state.count + 1 } // ✅ Declared, not executed
+      };
+  }
+}
+
+// 2. src/features/counter/shell.tsx (Thin UI Shell / State Hook)
+'use client';
+import { useReducer } from 'react';
+import { update } from './core';
+
+export function CounterShell({ initialNow }: { initialNow: string }) {
+  const [state, dispatch] = useReducer(update, { count: 0, lastUpdated: initialNow });
+
+  return (
+    <div>
+      <p>Count: {state.count} (Updated: {state.lastUpdated})</p>
+      <button onClick={() => dispatch({ type: 'INCREMENT', now: new Date().toISOString() })}>
+        Increment
+      </button>
+    </div>
+  );
+}
 ```
 
 ---
 
+## 4. Why AST-based Verification? (`npm run verify`)
+
+AI models tend to hallucinate or forget instructions (e.g., *"please do not write new Date() inside core"*). Membrain replaces "hope prompts" with **mechanical verification** via a TypeScript AST parser (`verify.mjs`).
+
+* **L1 Isolation**: Banned cross-feature imports ensure AI can work on Feature B without loading or breaking Feature A.
+* **L2 Purity**: Core files are physically audited to ensure no IO, fetches, or time generation slip in.
+* **The Ref's Job**: The verifier is your referee. As a vibe coder, you don't need to double-check the AI's architectural discipline. If `npm run verify` turns green, the boundaries are intact.
+
+---
+
+## 5. The Gardener Workflow & Mindset (`npm run garden`)
+
+* **Write Fast, Refactor Later**: While you or the AI write UI, feel free to use inline arbitrary Tailwind values (like `bg-[#ff0000]`) or duplicate layout markup to move fast.
+* **Gardener Refactoring**: Running `npm run garden` instructs the AI gardener to refactor raw colors/spacing, consolidate layout duplicates, and pull them into shared UI primitives (`src/shared/ui`).
+* **Vibe Coder Mindset**: The AI gardener's refactoring is heuristic and might occasionally require small visual adjustments. Accept that the output might not be perfect in exchange for high-velocity prototyping.
+
+---
+
 ## Next Steps
-*   To set up a new project, follow [docs_HUMAN-ONLY/setup.md](setup.md).
-*   For the history, context, and detailed design logs of Membrain's alpha evaluations, refer to [docs_HUMAN-ONLY/membrain-alpha-evaluation.md](membrain-alpha-evaluation.md).
+* To set up a new project, follow [docs_HUMAN-ONLY/setup.md](setup.md).
+* For the detailed design logs of Membrain's alpha evaluations, refer to [docs_HUMAN-ONLY/membrain-alpha-evaluation.md](membrain-alpha-evaluation.md).
