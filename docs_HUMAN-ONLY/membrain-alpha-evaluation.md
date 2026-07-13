@@ -2,10 +2,10 @@
 
 This document gathers the most prominent current hypotheses concerning Membrain, Next.js, and generative-AI-friendly development architectures. It does not record design decisions or work history for specific projects.
 
-- This document does not have an index. We rewrite this file directly whenever our thoughts evolve. It is not written once and left completed.
+- This document does not have an index. We rewrite this file directly whenever our thoughts evolve. It is not a static document; it is updated continuously.
 - What is written here is not asserted facts, but the viewpoints that carry the most explanatory power at the present time.
 - Context, history, and insights that we decided not to put in `MEMBRAIN.md` belong here (see "About the MEMBRAIN.md File" for why).
-- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in `docs/membrain-alpha-evaluation-archive.md`.
+- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in `docs_HUMAN-ONLY/membrain-alpha-evaluation-archive.md`.
 
 Tags are attached to individual descriptions rather than headings.
 
@@ -17,7 +17,7 @@ Tags are attached to individual descriptions rather than headings.
 
 ## About the MEMBRAIN.md File
 
-- `MEMBRAIN.md` is the file that every implementing AI must read for every task. In terms of reading frequency and scope, it is the most extreme trunk of the project. The same logic applies here as with a bloated `types.ts` degrading the isolation of all features: if the file gets bloated, developer effectiveness degrades. `[Observation]`
+- `MEMBRAIN.md` is the file that every implementing AI must read for every task. In terms of reading frequency and scope, it is a central trunk of the project. The same logic applies here as with a bloated `types.ts` degrading the isolation of all features: if the file gets bloated, developer effectiveness degrades. `[Observation]`
   - Therefore, we write only execution rules in `MEMBRAIN.md` and its peripheral scripts (like verify), leaving context, history, and insights out of it. `[Implication]`
     - This is simply applying the `MEMBRAIN.md` principle—"keep types near the owner, raise only shared contracts to types.ts"—to the document itself.
   - This observation provides the direct justification for pushing alpha evaluations out of `MEMBRAIN.md` into this file.
@@ -27,7 +27,7 @@ Tags are attached to individual descriptions rather than headings.
 - A prose instruction like "please do this" or "be careful about that," which is not enforced by tools, has no guarantee of being followed. We call these "hope prompts," representing the lowest tier (`hope`) in the Membrain reliability hierarchy (hope < detect < prevent-weak < prevent-strong). `[Core Hypothesis]`
 - Such instructions do not cause significant performance degradation when introduced individually. Modern models are robust against small amounts of prose instructions. `[Observation]`
   - However, the true danger is not a single addition, but cumulative bloat. Repeatedly adding "harmless lines of prose" balloons the trunk that every AI must read every time.
-  - The historical bloat of the old `CLAUDE.md` (v3) was a prime example of this accumulation (see `docs/membrain-alpha-evaluation-archive.md`).
+  - The historical bloat of the old `CLAUDE.md` (v3) was a prime example of this accumulation (see `docs_HUMAN-ONLY/membrain-alpha-evaluation-archive.md`).
 - The remedy is identical to "About the MEMBRAIN.md File": impose a budget on prose instructions. `[Implication]`
   - Instead of relying on moral discipline like "let's try not to write too much," we structurally prevent budget overruns by carving out the space for history and context into this external document.
   - Core phrasing: What is dangerous is not a single line of hope prompt, but allowing it to settle and accumulate in a place where it doesn't belong.
@@ -48,7 +48,7 @@ Tags are attached to individual descriptions rather than headings.
   - This breach shows no harm when there is only one feature, manifesting only the moment a second feature is added. Therefore, "it works, so it's fine" cannot be trusted, requiring mechanical enforcement as L7. `[Implication]`
   - To prevent regressions, we place reverse-dependency test fixtures in `verify/fixtures/` and monitor them continuously via L6 self-tests.
 - There are also semantic reverse dependencies that do not involve explicit imports: for example, when common component props or vocabulary learn feature-specific nouns (like `hintData`). This is difficult to catch via AST, and is covered by design reviews: "If `shared/ui` learns a feature noun, move it back into the feature." `[Implication]`
-- Raising a type to a central `types` file when it is needed by multiple features is a false remedy. It does not eliminate the dependency; it merely washes it, returning it to a shared garbage bin. The correct solution is: (a) use `contracts/*.ts` for thin bridges of persistence/API contracts, or (b) make the components talk in primitives for UI concerns. `[Implication]`
+- Raising a type to a central `types` file when it is needed by multiple features is a false remedy. It does not eliminate the dependency; it merely masks it, parking it in a shared garbage bin. The correct solution is: (a) use `contracts/*.ts` for thin bridges of persistence/API contracts, or (b) make the components talk in primitives for UI concerns. `[Implication]`
 
 ## Unified Presentation Layer — Three Layers: Frame, Vocabulary, Components
 
@@ -85,8 +85,8 @@ Tags are attached to individual descriptions rather than headings.
 
 ## Why L6 (Verifier Self-Verification) is the Backbone
 
-- Simply saying "enforce with tools" does not prevent the enforcement from being empty. Real-world example (the L4 comment incident): The verification regex was fooled by a comment string, allowing a code block lacking exhaustiveness termination to pass undetected. `[Observation]`
-- Therefore, L6 is the backbone of this framework. We prove the verifier is functioning every time by testing it against intentionally broken fixtures. Even if the Form is free, this proof remains fixed. Without L6, L1–L5/L7 revert to hope at the meta-level. `[Core Hypothesis]`
+- Simply saying "enforce with tools" does not guarantee that the enforcement is effective. Real-world example (the L4 comment incident): The verification regex was fooled by a comment string, allowing a code block lacking exhaustiveness termination to pass undetected. `[Observation]`
+- Therefore, L6 is the backbone of this framework. We prove the verifier is functioning every time by testing it against intentionally broken fixtures. Even if the Form is flexible, this proof remains fixed. Without L6, L1–L5/L7 revert to hope at the meta-level. `[Core Hypothesis]`
 
 ## types.ts Sharing Budget and Limits of Verify
 
@@ -122,5 +122,5 @@ Tags are attached to individual descriptions rather than headings.
   - The solution: Delegate decision-making authority to lower layers (feature/Core/Shell) to structurally relieve the top layer's load. This aligns perfectly with the role already played by Membrain's "feature isolation / horizontal isolation." `[Implication]`
 - This phenomenon is not unique to Membrain, but is background knowledge underpinning all AI-collaborative development. `[Implication]`
   - Third parties adopting Membrain do not necessarily need to know this background. It serves as the origin context preserved as a common language between humans and AI.
-  - Note: The specific conclusion derived from this in old v3 ("prefer one giant file over multiple short files, eliminate imports") has been retracted (see `docs/membrain-alpha-evaluation-archive.md` "Expiry of the Dependency Graph Tracking Cost Assumption"). What we preserve here is not that conclusion, but the existence of the attention context-switching cost phenomenon itself.
+  - Note: The specific conclusion derived from this in old v3 ("prefer one giant file over multiple short files, eliminate imports") has been retracted (see `docs_HUMAN-ONLY/membrain-alpha-evaluation-archive.md` "Expiry of the Dependency Graph Tracking Cost Assumption"). What we preserve here is not that conclusion, but the existence of the attention context-switching cost phenomenon itself.
 

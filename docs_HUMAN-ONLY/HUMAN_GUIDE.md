@@ -16,16 +16,28 @@ In standard development, writing state machines, validation rules, and integrati
 
 ---
 
-## 2. Bridging Membrain to Next.js
+## 2. Bridging Membrain and Next.js
 
 If you have built Next.js apps before, Membrain reorganizes your code to keep the AI from entangling features. Here is how Membrain's boundary concepts map to standard Next.js building blocks:
 
 | Membrain Component | Next.js Mapping & Role | Directory |
 | :--- | :--- | :--- |
-| **Core** | **Pure Logic Layer**. Reducer-like functions (`init`, `update`). Contains zero async, zero fetch, and no time generation. Safe to run anywhere. | `features/*/core.ts` |
+| **Core** | **Pure Logic Layer**. Reducer-like functions (`init`, `update`). Contains zero async operations, zero fetches, and no dynamic date/time generation. Safe to run anywhere. | `features/*/core.ts` |
 | **Shell** | **Client Component State Wiring**. Binds the state to UI layout. Translates user interactions into `Action`s. | `features/*/shell.tsx` |
 | **Source** (Edge) | **Non-deterministic Gateways**. Reads current time, generates UUIDs, or performs database/API fetch (RSC edge). | `shared/source.ts` |
 | **Effect** | **Side-effect Executor**. The single point of dispatch for router navigation, toast notifications, and client fetch. | `shared/runEffect.ts` |
+
+### Paradigm Comparison: Standard Next.js vs. Membrain
+
+To understand *why* Membrain imposes these strict boundaries, here is how it contrasts with standard Next.js development paradigms:
+
+| Dimension | Standard Next.js | Membrain Architecture |
+| :--- | :--- | :--- |
+| **Concern Coupling** | State, async fetches (IO), date/time logic, and UI rendering are often tangled in React components. | **Complete Physical Separation**. Pure functional logic (`core.ts`) is strictly isolated from side-effects (`shell.tsx`, `runEffect.ts`). |
+| **Rule Enforcement** | Guidelines exist in documentation or team conventions (**"Hope Prompts"**), which AI models easily ignore or forget. | **Mechanical Verification**. Strict boundaries (feature isolation, core purity) are audited and enforced by AST parsing (`npm run verify`). |
+| **Data Flow** | State changes, API fetches, and side-effects are scattered across various hooks, causing complex, unpredictable events. | **Single Unidirectional Loop**. Data flows strictly in one closed loop: `UI ➔ Action ➔ Pure Core ➔ New State & Effect ➔ runEffect ➔ UI`. |
+| **AI Collaboration** | AI must understand the coupled codebase, leading to unlimited context bloat and high mapping costs. | **Context Containment**. Allows the AI to work only within a separated feature context (not the entire application context), preventing accuracy degradation caused by attention context-switching costs. |
+| **Visual Maintenance** | Human/AI developers spend manual effort refactoring inline Tailwind values, color names, and layout duplicates. | **Automated Gardening**. An AI gardener (`npm run garden`) aggregates raw styling code into semantic tokens and shared UI primitives. |
 
 ---
 
@@ -118,7 +130,7 @@ export function CounterShell({ initialNow }: { initialNow: string }) {
 
 AI models tend to hallucinate or forget instructions (e.g., *"please do not write new Date() inside core"*). Membrain replaces "hope prompts" with **mechanical verification** via a TypeScript AST parser (`verify.mjs`).
 
-* **L1 Isolation**: Banned cross-feature imports ensure AI can work on Feature B without loading or breaking Feature A.
+* **L1 Isolation**: Banning cross-feature imports ensures that the AI can work on Feature B without loading or breaking Feature A.
 * **L2 Purity**: Core files are physically audited to ensure no IO, fetches, or time generation slip in.
 * **The Ref's Job**: The verifier is your referee. As a vibe coder, you don't need to double-check the AI's architectural discipline. If `npm run verify` turns green, the boundaries are intact.
 

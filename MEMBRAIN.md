@@ -39,13 +39,13 @@ Details of the Form and Judgment are decided contextually by you. The primary me
 ### Type Placement
 *   **Single Owner**: Co-locate the type definition inside the file that consumes it.
 *   **Local Shared**: Place in the representative file of the cluster (usually in `core.ts` where defaults are defined).
-*   **True Shared Contract**: Place in `types.ts` direct under the feature.
+*   **True Shared Contract**: Place in `types.ts` directly under the feature.
 *   **Discriminated Unions**: Keep membrane vocabulary (`Action` / `Effect` / `State` / `InitData`) in `types.ts` even if there is currently only one consumer.
 
 ### Layouts Go Up, Components Go In
 *   **Frame**: Pull headers, navigation, and page layouts up to `app/layout.tsx` and `shared/ui/*`.
 *   **Feature UI**: Place feature-specific UI components in `features/<name>/components/`. Duplication is allowed and preferred over coupling.
-*   **Shared UI**: `shared/ui` must only contain presentation primitives that do not know feature nouns (e.g. `Button`, `Card`). They must not import feature types (L7).
+*   **Shared UI**: `shared/ui` must only contain presentation primitives that are decoupled from feature-specific concepts (e.g. `Button`, `Card`). They must not import feature types (L7).
 
 ### Keep Shells Thin
 *   Move all pure judgments (save triggers, status transitions, threshold checks) from `shell.tsx` into pure functions in `core.ts`.
