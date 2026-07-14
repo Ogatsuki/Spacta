@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * Membrain verify — 設計論考 I/II の「不変条件をツールで物理強制する」を実装した例。
+ * Spacta verify — 設計論考 I/II の「不変条件をツールで物理強制する」を実装した例。
  *
  * 設計上の要点（なぜ grep ではないか）:
  *   旧 BENCHMARK_PROTOCOL の純度チェックは `grep "Date.now\\|Math.random"` だったため
  *   `new Date()` を**見逃して緑を出した**（ニセの緑）。本スクリプトは TypeScript の
  *   AST を歩いて構文として検出する＝prevent-strong。
  *
- * チェック（MEMBRAIN.md §1 の Law に対応）:
+ * チェック（SPACTA.md §1 の Law に対応）:
  *   L1 cross-feature-imports : feature が他 feature の内部を import していないか
  *   L2 core-purity           : <feature>/core.ts に IO(async/await/new Date/Date.now/Math.random/fetch/prisma/window…) が無いか
  *   L4 effect-runtime        : shell の effect.type switch に assertNever/:never 終端があるか
@@ -171,7 +171,7 @@ function getViolationDetails(v) {
     default:
       name = "Unknown Violation";
       why = v.msg;
-      fix = "Resolve the violation according to Membrain conventions.";
+      fix = "Resolve the violation according to Spacta conventions.";
   }
 
   return { name, why, fix };
@@ -929,7 +929,7 @@ function emitJson(payload) {
     rule: v.rule, file: relative(projectRoot, v.file), line: v.line, col: v.col ?? 1, msg: v.msg,
   });
   const body = {
-    tool: "membrain-verify",
+    tool: "spacta-verify",
     schemaVersion: 1,
     projectRoot,
     selfTest: payload.selfTest,
@@ -951,7 +951,7 @@ function group(viols) {
   return byRule;
 }
 
-console.log(`\n[Membrain verify] target = ${projectRoot}\n`);
+console.log(`\n[Spacta verify] target = ${projectRoot}\n`);
 
 // Run L6 self-test first. If the verifier is broken, subsequent greens cannot be trusted.
 const selfFail = runSelfTest();

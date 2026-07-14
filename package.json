@@ -1,7 +1,7 @@
 {
-  "name": "membrain",
+  "name": "spacta",
   "version": "1.0.0",
-  "description": "Membrain — Pure-boundary architecture physically enforced by AST static verification",
+  "description": "Spacta — Pure-boundary architecture physically enforced by AST static verification",
   "private": true,
   "scripts": {
     "verify": "node verify/verify.mjs .",

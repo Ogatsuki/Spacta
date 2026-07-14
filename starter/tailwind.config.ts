@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 /**
- * 提示の原始値（色・余白・角丸など）の唯一のソース（MEMBRAIN.md §2.5）。
+ * 提示の原始値（色・余白・角丸など）の唯一のソース（SPACTA.md §2.5）。
  * shell/components はここで定義したユーティリティ（例: `bg-primary`）だけを使う。
  * コンポーネント固有のバリアント束（tone/size 等の組み合わせ）はここに置かず、
  * `shared/ui` の各コンポーネントに `tailwind-variants` で co-locate する。

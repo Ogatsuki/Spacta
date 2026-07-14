@@ -1,4 +1,4 @@
-# Membrain Gardener — Gardening Cleanup Instructions Operation Procedure
+# Spacta Gardener — Gardening Cleanup Instructions Operation Procedure
 
 > **Philosophy**: From "decide correctly upfront (upfront design)" to "keep fixing cheaply after the fact (cleanup after the fact)".
 > The info check in verify is not a punishment, but a **set of instructions for the Gardener**. We maintain the garden through **eventual consistency** rather than immediate enforcement (fail).
@@ -18,7 +18,7 @@ Gardener Agent   ... Reads the instructions and mechanically organizes the codeb
 ## Execution Timing
 
 - Standard timing is manually running at **milestones during implementation** (e.g., when a feature is complete or before opening a PR).
-- **Do not put this in pre-commit hooks** (does not block human prototyping vibes / `MEMBRAIN.md` §4.8).
+- **Do not put this in pre-commit hooks** (does not block human prototyping vibes / `SPACTA.md` §4.8).
 - Consider automated execution such as nightly batch jobs only after the Gardener's performance stabilizes (phased operation, similar to burn-in phase).
 
 ## Gardener Agent Procedure
@@ -59,7 +59,7 @@ export type PlannedContract = { ... };
 1. **Do not change behavior**. All gardening actions must be equivalent transformations (deleting only dead items with zero references). Do not mix in specification changes, feature additions, or bug fixes. Report any bugs found instead of fixing them.
 2. **Do not break verify green**. If verify turns red after a task, revert that task and report.
 3. **When in doubt, ask instead of deleting**. Do not add keeps based on speculation like "this might be used soon." Direct questions to humans (or the task issuer).
-4. **Do not extract to `shared/ui`**. Cross-feature clone detection (clone B3) is not yet supported. Consolidating duplicates is outside Gardener v1's scope (`MEMBRAIN.md` §2.5: duplication is cheaper than a bloated trunk).
+4. **Do not extract to `shared/ui`**. Cross-feature clone detection (clone B3) is not yet supported. Consolidating duplicates is outside Gardener v1's scope (`SPACTA.md` §2.5: duplication is cheaper than a bloated trunk).
 5. **Do not promote info to fail**. Promotions (info ➔ fail) are decided by humans after observing the burn-in phase.
 6. **Do not change the rules of verify or garden**. Modifying the verifier or cleanup instruction generator is not gardening work (belongs to L6 domain).
 7. **`notes` (types.ts line budget, tsconfig include) are reference information**. Do not modify files mechanically unless it naturally resolves (e.g. line count drops after executing `colocate-type`). Simply report.
@@ -79,7 +79,7 @@ Resolved tasks from garden-report.json (2026-07-06). No behavior changes. verify
 
 ## Bootstrap (Wiring to New Projects)
 
-1. Copy `garden/` (this folder) along with `verify/` directly under the root of the project (`MEMBRAIN.md` §0).
+1. Copy `garden/` (this folder) along with `verify/` directly under the root of the project (`SPACTA.md` §0).
    `garden.mjs` references `verify/verify.mjs` in the sibling directory.
 2. Add the script to `package.json`: `"garden": "node garden/garden.mjs ."`
 3. Add `garden-report.json` to `.gitignore`.
@@ -89,6 +89,6 @@ Resolved tasks from garden-report.json (2026-07-06). No behavior changes. verify
 - **Detection is unified in verify**. Garden does not maintain a separate scanner (duplicate implementations risk missing detections outside L6 guarantees).
   Adding a new info to verify only requires adding a line to `TASK_KINDS` in `garden.mjs`. Forgetting to add it will always surface as an `unknown` task.
 - **Blocking gardening on verify red** prevents diff equivalence guarantees from breaking when law violations and equivalent transformations are mixed.
-- **Including L5 warn** because it was something "mechanically found but had no owner to fix." An after-the-fact version of pushing to core (`MEMBRAIN.md` §2.5).
+- **Including L5 warn** because it was something "mechanically found but had no owner to fix." An after-the-fact version of pushing to core (`SPACTA.md` §2.5).
 - UI clone detection (B3, completed) is integrated into the input source as `dedupe-clone` in `TASK_KINDS`. However, the Gardener only deduplicates "exact matches within the same feature," leaving cross-feature or partial similarity (80-90%) alone as stated in §5.
   Do not resolve all duplications just because they are found.

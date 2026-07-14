@@ -6,7 +6,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="ja">
       <body>
         <AppShell
-          title="Membrain starter"
+          title="Spacta starter"
           description="共通の枠は app/layout.tsx と shared/ui に上げ、feature は中身だけを描く。"
         >
           {children}

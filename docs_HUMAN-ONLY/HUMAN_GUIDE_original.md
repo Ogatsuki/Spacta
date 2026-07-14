@@ -1,37 +1,49 @@
-# Membrain — AI-First Vibe Coding Guide & Architecture
+# Spacta — AI-First Vibe Coding Guide & Architecture
 
-Welcome to Membrain. This guide outlines how Membrain enables ultra-high-velocity **AI-First Vibe Coding** by defining clean, tool-verified boundaries between pure logic and side effects.
+Welcome to Spacta. 
+Spacts is a AI-friendly framework for vibe coder width Next.js App.
 
-> **Note for AI Developers**: Do not read this file. Refer directly to [MEMBRAIN.md](../MEMBRAIN.md) for execution rules.
+When we develop Next.js App, the logic and code will go to entangled and complicated one, that is no garanteed the "correct code" and no way to find out wrong logic point automatically.
+This is Human-frirendly because the common components reduce total code ammount Human writes and  to maintenance but not for not AI-friendly.
+one task need AI to read lots of file that is impor
+
+
 
 ---
+
+## 0. What is Spacta
+
+
+Spacta has 3 features mainly.
+
+1. 
+
 
 ## 1. The Core Vision: AI Writes, Humans Fine-tune
 
-In standard development, writing state machines, validation rules, and integration boilerplate is tedious. Under the Membrain model:
+In standard development, writing state machines, validation rules, and integration boilerplate is tedious. Under the Spacta model:
 
 * **AI-First Development**: **AI writes 100% of the initial codebase**—both the pure business logic in `core.ts` and the UI structure in `shell.tsx` or `components/`.
 * **Optional Human Intervention**: You are not a mandatory bottleneck. If the AI's generation works, you can ship it. However, if the UI needs to be pixel-perfect, or if the design demands subjective refinement, **you can step in to tweak the layout, styles, or CSS at any time**. 
-* **Zero Arbitrary Percentages**: There are no rigid quotas (like "90% AI / 10% Human"). You choose when and where to write code.
 
 ---
 
-## 2. Bridging Membrain and Next.js
+## 2. Bridging Spacta and Next.js
 
-If you have built Next.js apps before, Membrain reorganizes your code to keep the AI from entangling features. Here is how Membrain's boundary concepts map to standard Next.js building blocks:
+If you have built Next.js apps before, Spacta reorganizes your code to keep the AI from entangling features. Here is how Spacta's boundary concepts map to standard Next.js building blocks:
 
-| Membrain Component | Next.js Mapping & Role | Directory |
+| Spacta Component | Next.js Mapping & Role | Directory |
 | :--- | :--- | :--- |
 | **Core** | **Pure Logic Layer**. Reducer-like functions (`init`, `update`). Contains zero async operations, zero fetches, and no dynamic date/time generation. Safe to run anywhere. | `features/*/core.ts` |
 | **Shell** | **Client Component State Wiring**. Binds the state to UI layout. Translates user interactions into `Action`s. | `features/*/shell.tsx` |
 | **Source** (Edge) | **Non-deterministic Gateways**. Reads current time, generates UUIDs, or performs database/API fetch (RSC edge). | `shared/source.ts` |
 | **Effect** | **Side-effect Executor**. The single point of dispatch for router navigation, toast notifications, and client fetch. | `shared/runEffect.ts` |
 
-### Paradigm Comparison: Standard Next.js vs. Membrain
+### Paradigm Comparison: Standard Next.js vs. Spacta
 
-To understand *why* Membrain imposes these strict boundaries, here is how it contrasts with standard Next.js development paradigms:
+To understand *why* Spacta imposes these strict boundaries, here is how it contrasts with standard Next.js development paradigms:
 
-| Dimension | Standard Next.js | Membrain Architecture |
+| Dimension | Standard Next.js | Spacta Architecture |
 | :--- | :--- | :--- |
 | **Concern Coupling** | State, async fetches (IO), date/time logic, and UI rendering are often tangled in React components. | **Complete Physical Separation**. Pure functional logic (`core.ts`) is strictly isolated from side-effects (`shell.tsx`, `runEffect.ts`). |
 | **Rule Enforcement** | Guidelines exist in documentation or team conventions (**"Hope Prompts"**), which AI models easily ignore or forget. | **Mechanical Verification**. Strict boundaries (feature isolation, core purity) are audited and enforced by AST parsing (`npm run verify`). |
@@ -86,7 +98,7 @@ export default function Counter() {
 }
 ```
 
-#### After (Membrain Separation)
+#### After (Spacta Separation)
 The UI remains simple, while the calculations and side effects are separated. AI can safely regenerate the math in `core.ts` without touching your CSS.
 
 ```typescript
@@ -128,7 +140,7 @@ export function CounterShell({ initialNow }: { initialNow: string }) {
 
 ## 4. Why AST-based Verification? (`npm run verify`)
 
-AI models tend to hallucinate or forget instructions (e.g., *"please do not write new Date() inside core"*). Membrain replaces "hope prompts" with **mechanical verification** via a TypeScript AST parser (`verify.mjs`).
+AI models tend to hallucinate or forget instructions (e.g., *"please do not write new Date() inside core"*). Spacta replaces "hope prompts" with **mechanical verification** via a TypeScript AST parser (`verify.mjs`).
 
 * **L1 Isolation**: Banning cross-feature imports ensures that the AI can work on Feature B without loading or breaking Feature A.
 * **L2 Purity**: Core files are physically audited to ensure no IO, fetches, or time generation slip in.
@@ -146,4 +158,4 @@ AI models tend to hallucinate or forget instructions (e.g., *"please do not writ
 
 ## Next Steps
 * To set up a new project, follow [docs_HUMAN-ONLY/setup.md](setup.md).
-* For the detailed design logs of Membrain's alpha evaluations, refer to [docs_HUMAN-ONLY/membrain-alpha-evaluation.md](membrain-alpha-evaluation.md).
+* For the detailed design logs of Spacta's alpha evaluations, refer to [docs_HUMAN-ONLY/spacta-alpha-evaluation.md](spacta-alpha-evaluation.md).

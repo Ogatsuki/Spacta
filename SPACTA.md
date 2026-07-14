@@ -1,4 +1,4 @@
-# Membrain — AI Execution Rules
+# Spacta — AI Execution Rules
 
 > **Important**: This document defines the execution rules only. Compliance is mechanically verified by `npm run verify`.
 > Your job is not to "memorize the conventions" but to **fix the code until `verify` passes (returns green)**.
@@ -12,7 +12,7 @@
 
 > **Only data crosses the Core boundary. No IO enters, and no calculation escapes.**
 
-The Core (pure calculation) is a semipermeable membrane ("Membrain"). It only passes data (`State` / `Action` / `Effect` / `InitData`).
+The Core (pure calculation) is a semipermeable membrane ("Spacta"). It only passes data (`State` / `Action` / `Effect` / `InitData`).
 Side effects (network, time, random numbers, DOM rendering) never cross the membrane. All rules below are corollaries of this sentence.
 
 ---

@@ -1,6 +1,6 @@
-# Membrain Verify — Reference Implementation
+# Spacta Verify — Reference Implementation
 
-The actual running implementation of `MEMBRAIN.md` §1 (Laws) and §3 (Verification Contract).
+The actual running implementation of `SPACTA.md` §1 (Laws) and §3 (Verification Contract).
 This codebase serves as concrete proof of the core thesis: "Invariants are physically enforced by tools, not by prose."
 
 ## Why AST Analysis Over Simple Regex?
@@ -15,7 +15,7 @@ This failed to detect `new Date()` calls and produced a **false green**. The `io
 
 `verify.mjs` traverses the TypeScript AST (Abstract Syntax Tree) to inspect the structure of the code. This achieves a **strong-prevention** guarantee in the architectural reliability hierarchy (strong-prevention > weak-prevention > detection > hope).
 
-## Checks Performed (Corresponding to `MEMBRAIN.md` §1)
+## Checks Performed (Corresponding to `SPACTA.md` §1)
 
 | Law / Rule | Target | Detection (Diagnostic Name) |
 |---|---|---|
@@ -64,14 +64,14 @@ node verify.mjs <projectRoot> --tsc   # Also runs tsc --noEmit at the end
 node verify.mjs <projectRoot> --json  # Outputs machine-readable JSON (consumed by garden)
 ```
 
-Add this to `package.json` to make it a CI gate (`MEMBRAIN.md` §3.4):
+Add this to `package.json` to make it a CI gate (`SPACTA.md` §3.4):
 
 ```json
 { "scripts": { "verify": "node verify/verify.mjs ." } }
 ```
 
 > typescript is resolved from the target project's `node_modules`. Placing it directly under the project root requires zero additional dependencies.
-> **`verify` (without `--tsc`) is not type checking.** L1–L8 inspect structural boundaries. Unused imports or broken references left after moving files will be green in verify and only red in `tsc`. Always run `node verify.mjs <projectRoot> --tsc` (or `npm run verify:tsc` / `tsc --noEmit`). **Green verify ≠ Green types** (`MEMBRAIN.md` §3).
+> **`verify` (without `--tsc`) is not type checking.** L1–L8 inspect structural boundaries. Unused imports or broken references left after moving files will be green in verify and only red in `tsc`. Always run `node verify.mjs <projectRoot> --tsc` (or `npm run verify:tsc` / `tsc --noEmit`). **Green verify ≠ Green types** (`SPACTA.md` §3).
 
 ## Real-world Example: How L6 Caught Its Own Bug During Development
 
@@ -89,8 +89,8 @@ The fix was to change to AST-based evaluation (inspecting for `NeverKeyword` nod
 - **L1 relative import evaluation is robust**. It resolves paths using `path.resolve`, ensuring accurate cross-feature boundaries regardless of import depth or path structure.
 - **L8 is a heuristic based on color sets**. It flags grayscales and color+opacity, while allowing status colors and semantic tokens. It is not perfect and can miss new Tailwind aliases, acting purely as an **info/burn-in**. True UI alignment (fonts, rounded corners, overall feel) lies outside color tokens, handled by the `frontend-design` skill / human reviews.
 - **Clone detection is a heuristic (Jaccard similarity ≥ 0.9, token count ≥ 5)**. It compares the set of "child tag names + className tokens" for root JSX elements. Since it compares classNames as sets, **it is unaffected by Tailwind class ordering**. Child JSX returned by `.map()` is excluded from parent comparison to avoid false nesting duplicates. It merely flags **suspected** duplications as info. Deciding whether to dry up duplication is left to the gardener/human.
-- **Does not check semantic intent**. Green `verify` does not guarantee the app behaves correctly. It only ensures borders aren't broken and the structure is clean (`MEMBRAIN.md` §4.5).
-- Designed as a custom AST script to avoid dependencies on ESLint flat config (which broke due to circular references in the benchmark project). In production, you can replace this with dependency-cruiser, etc. (`MEMBRAIN.md` §2).
+- **Does not check semantic intent**. Green `verify` does not guarantee the app behaves correctly. It only ensures borders aren't broken and the structure is clean (`SPACTA.md` §4.5).
+- Designed as a custom AST script to avoid dependencies on ESLint flat config (which broke due to circular references in the benchmark project). In production, you can replace this with dependency-cruiser, etc. (`SPACTA.md` §2).
 
 ## Files
 
