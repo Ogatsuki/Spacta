@@ -1,12 +1,12 @@
-# Membrain Starter — Verified "Default Form" Template
+# Spacta Starter — Verified "Default Form" Template
 
 A minimal project template measured and confirmed to be **100% compliant** under `npm run verify`.
-It serves as the default reference template to jump-start Phase 0 bootstrap and prevent development drift. It represents the default *Form* described in `MEMBRAIN.md` §2.
+It serves as the default reference template to jump-start Phase 0 bootstrap and prevent development drift. It represents the default *Form* described in `SPACTA.md` §2.
 The bundled `../verify/verify.mjs` operates assuming this structure:
 `app/layout.tsx` + `src/shared/{ui,runEffect,source}` + `src/features/<name>/{types,core,shell,components}` + `app/**/page.tsx`.
 
 > **The purpose of this starter is to prevent developers and AIs from writing verification tooling from scratch.** A finished verifier is pre-bundled in the `verify/` directory.
-> Your focus should be on implementing features, not reinventing AST validation scripts (`MEMBRAIN.md` §0/§3).
+> Your focus should be on implementing features, not reinventing AST validation scripts (`SPACTA.md` §0/§3).
 
 ## What's Inside (Minimal examples satisfying each law)
 
@@ -37,19 +37,19 @@ Key points that trip up new AIs:
 
 ```sh
 # 1) Copy this starter template and the verify/ folder to the root of your new project
-cp -r Membrain/starter/*  myapp/
-cp -r Membrain/verify     myapp/verify
+cp -r Spacta/starter/*  myapp/
+cp -r Spacta/verify     myapp/verify
 
 # 2) Install the framework and dependencies
 cd myapp && npm install        # typescript, tailwindcss, and tailwind-variants are pre-configured.
 
-# 3) Run the verifier (runs with zero dependencies for Membrain laws)
+# 3) Run the verifier (runs with zero dependencies for Spacta laws)
 npm run verify                 # Runs L1–L8 checks, including the L6 self-test.
 npm run verify:tsc             # Finally, verify TypeScript types via tsc --noEmit.
 ```
 
 > `npm run verify` (without `--tsc`) runs successfully using **only TypeScript** as a parser. React/Next.js types are only required when running the type checker (`--tsc`).
-> Enforce `npm run verify` as a gate in CI (pre-commit / GitHub Actions) to prevent design drift (`MEMBRAIN.md` §3.4).
+> Enforce `npm run verify` as a gate in CI (pre-commit / GitHub Actions) to prevent design drift (`SPACTA.md` §3.4).
 
 ## Adding Features
 
@@ -58,9 +58,9 @@ npm run verify:tsc             # Finally, verify TypeScript types via tsc --noEm
 2. When adding an Effect, add it to **both** the `Effect` type in `src/shared/types.ts` and the case inside `src/shared/runEffect.ts`
    (forgetting to add it will fail `tsc` due to the `assertNever` check).
 3. If a common layout wrapper is needed, raise it to `app/layout.tsx` or `shared/ui`. If it starts knowing feature nouns, keep it inside features.
-4. Fix the code until `npm run verify` turns green. A red status is a bug to be fixed, not a warning (`MEMBRAIN.md` §4).
+4. Fix the code until `npm run verify` turns green. A red status is a bug to be fixed, not a warning (`SPACTA.md` §4).
 
-## Details of Form Can Be Decided Flexibly (`MEMBRAIN.md` §2.5)
+## Details of Form Can Be Decided Flexibly (`SPACTA.md` §2.5)
 
 This starter is a **safe default form**, not the only correct structure. Next.js applications vary widely, and rigid structures do not fit all.
 As long as `verify` is green and §1 laws are followed, you can contextually decide:

@@ -1,4 +1,4 @@
-# Membrain
+# Spacta
 
 An AI-friendly, boundary-enforced Next.js development architecture.
 
@@ -8,7 +8,7 @@ An AI-friendly, boundary-enforced Next.js development architecture.
 
 If your a AI Agent, read only rulebook below.
 
-**[MEMBRAIN.md](MEMBRAIN.md)**
+**[SPACTA.md](SPACTA.md)**
 
 *Note: Do not read `docs_HUMAN-ONLY/` unless explicitly instructed, as it contains human-centric prose that may pollute your attention context.*
 
@@ -20,6 +20,6 @@ If you are a Human and want to understand the architectural overview, philosophy
 
 **[docs_HUMAN-ONLY/HUMAN_GUIDE.md](docs_HUMAN-ONLY/HUMAN_GUIDE.md)**
 
-To bootstrap a new Membrain project from scratch:
+To bootstrap a new Spacta project from scratch:
 
 **[docs_HUMAN-ONLY/setup.md](docs_HUMAN-ONLY/setup.md)**

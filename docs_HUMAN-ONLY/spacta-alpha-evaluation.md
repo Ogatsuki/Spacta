@@ -1,34 +1,34 @@
-# Membrain Alpha Evaluation
+# Spacta Alpha Evaluation
 
-This document gathers the most prominent current hypotheses concerning Membrain, Next.js, and generative-AI-friendly development architectures. It does not record design decisions or work history for specific projects.
+This document gathers the most prominent current hypotheses concerning Spacta, Next.js, and generative-AI-friendly development architectures. It does not record design decisions or work history for specific projects.
 
 - This document does not have an index. We rewrite this file directly whenever our thoughts evolve. It is not a static document; it is updated continuously.
 - What is written here is not asserted facts, but the viewpoints that carry the most explanatory power at the present time.
-- Context, history, and insights that we decided not to put in `MEMBRAIN.md` belong here (see "About the MEMBRAIN.md File" for why).
-- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in `docs_HUMAN-ONLY/membrain-alpha-evaluation-archive.md`.
+- Context, history, and insights that we decided not to put in `SPACTA.md` belong here (see "About the SPACTA.md File" for why).
+- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in `docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md`.
 
 Tags are attached to individual descriptions rather than headings.
 
-- `[Core Hypothesis]` — The central working hypothesis of Membrain and generative-AI-friendly development.
+- `[Core Hypothesis]` — The central working hypothesis of Spacta and generative-AI-friendly development.
 - `[Observation]` — Phenomena that have been repeatedly observed and support other hypotheses.
 - `[Implication]` — Design or operational consequences derived from core hypotheses or observations.
 
 ---
 
-## About the MEMBRAIN.md File
+## About the SPACTA.md File
 
-- `MEMBRAIN.md` is the file that every implementing AI must read for every task. In terms of reading frequency and scope, it is a central trunk of the project. The same logic applies here as with a bloated `types.ts` degrading the isolation of all features: if the file gets bloated, developer effectiveness degrades. `[Observation]`
-  - Therefore, we write only execution rules in `MEMBRAIN.md` and its peripheral scripts (like verify), leaving context, history, and insights out of it. `[Implication]`
-    - This is simply applying the `MEMBRAIN.md` principle—"keep types near the owner, raise only shared contracts to types.ts"—to the document itself.
-  - This observation provides the direct justification for pushing alpha evaluations out of `MEMBRAIN.md` into this file.
+- `SPACTA.md` is the file that every implementing AI must read for every task. In terms of reading frequency and scope, it is a central trunk of the project. The same logic applies here as with a bloated `types.ts` degrading the isolation of all features: if the file gets bloated, developer effectiveness degrades. `[Observation]`
+  - Therefore, we write only execution rules in `SPACTA.md` and its peripheral scripts (like verify), leaving context, history, and insights out of it. `[Implication]`
+    - This is simply applying the `SPACTA.md` principle—"keep types near the owner, raise only shared contracts to types.ts"—to the document itself.
+  - This observation provides the direct justification for pushing alpha evaluations out of `SPACTA.md` into this file.
 
 ## The Concept of Hope Prompts
 
-- A prose instruction like "please do this" or "be careful about that," which is not enforced by tools, has no guarantee of being followed. We call these "hope prompts," representing the lowest tier (`hope`) in the Membrain reliability hierarchy (hope < detect < prevent-weak < prevent-strong). `[Core Hypothesis]`
+- A prose instruction like "please do this" or "be careful about that," which is not enforced by tools, has no guarantee of being followed. We call these "hope prompts," representing the lowest tier (`hope`) in the Spacta reliability hierarchy (hope < detect < prevent-weak < prevent-strong). `[Core Hypothesis]`
 - Such instructions do not cause significant performance degradation when introduced individually. Modern models are robust against small amounts of prose instructions. `[Observation]`
   - However, the true danger is not a single addition, but cumulative bloat. Repeatedly adding "harmless lines of prose" balloons the trunk that every AI must read every time.
-  - The historical bloat of the old `CLAUDE.md` (v3) was a prime example of this accumulation (see `docs_HUMAN-ONLY/membrain-alpha-evaluation-archive.md`).
-- The remedy is identical to "About the MEMBRAIN.md File": impose a budget on prose instructions. `[Implication]`
+  - The historical bloat of the old `CLAUDE.md` (v3) was a prime example of this accumulation (see `docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md`).
+- The remedy is identical to "About the SPACTA.md File": impose a budget on prose instructions. `[Implication]`
   - Instead of relying on moral discipline like "let's try not to write too much," we structurally prevent budget overruns by carving out the space for history and context into this external document.
   - Core phrasing: What is dangerous is not a single line of hope prompt, but allowing it to settle and accumulate in a place where it doesn't belong.
 
@@ -40,7 +40,7 @@ Tags are attached to individual descriptions rather than headings.
   - This is why the verifier places a line count info check only on `types.ts`, and does not impose line gates on shells. `[Implication]`
 - The line count info check is not scolding "having too many types." Rather, it uses line count as a proxy to detect architectural distortions, such as "types that do not cross the membrane being parked in the contract file." `[Observation]`
   - Therefore, you must not mechanically split files just to hit numbers (which is like breaking the thermometer to lower the temperature). The correct cure is reducing the actual shared volume—co-locating single-owner types and deleting dead contracts. `[Implication]`
-  - `MEMBRAIN.md` is also an extreme trunk read by all AIs on every task, and is subject to the same budget discipline (see "About the MEMBRAIN.md File").
+  - `SPACTA.md` is also an extreme trunk read by all AIs on every task, and is subject to the same budget discipline (see "About the SPACTA.md File").
 
 ## The Harm of Reverse Dependency (shared ➔ features) and Delayed Manifestation
 
@@ -70,13 +70,13 @@ Tags are attached to individual descriptions rather than headings.
   - L8 only protects **vocabulary consistency**. Typography, spacing, margins, graphics, and the overall universe (tone & manner) lie outside color tokens, belonging to AI reviews using multimodal capabilities, `frontend-design` skills, or humans (the 4th axis of uniformity outside the 3 layers).
 - Clone detection (B3) compared JSX elements returned by `.map()` callbacks as "independent root elements" against the parent, incorrectly reporting parent `<ul>` and child `<li>` as duplicates with 0.9+ Jaccard similarity. Root JSX returned inside callbacks must be excluded from parent comparison as they are semantically descendants of the parent. **We fix verifier heuristic false positives in L6 self-tests via fixtures (`clone-map-callback`) to prevent regression.** `[Observation]`
 
-## Membrain and Parallel Implementation
+## Spacta and Parallel Implementation
 
-- Membrain is not "conventions to remind you of good design," but a "terrain to keep parallel implementers from colliding." `[Core Hypothesis]`
-  - In adding the `dashboard` feature, we froze `types.ts` first, then distributed core/source/shell to multiple agents in parallel. This clearly demonstrated the value of Membrain.
+- Spacta is not "conventions to remind you of good design," but a "terrain to keep parallel implementers from colliding." `[Core Hypothesis]`
+  - In adding the `dashboard` feature, we froze `types.ts` first, then distributed core/source/shell to multiple agents in parallel. This clearly demonstrated the value of Spacta.
   - `types.ts` functions not as a "dumping ground for all types," but as a membrane contract for parallel implementers to align on. `[Observation]`
     - If the type contract is frozen beforehand, the Core developer only writes pure aggregations, the Source developer only writes IO, and the Shell developer only writes rendering. They do not need to know each other's implementation to integrate successfully at the end.
-  - Membrain does not reduce context; it **fixes the points where contexts merge**. Consequently, multiple agents writing simultaneously rarely collide or blur responsibilities.
+  - Spacta does not reduce context; it **fixes the points where contexts merge**. Consequently, multiple agents writing simultaneously rarely collide or blur responsibilities.
 - However, this success is contingent on freezing the types contract first. `[Implication]`
   - If parallelized while contract remains ambiguous, agents will expand contracts independently, turning `types.ts` back into a garbage bin.
   - `types.ts` must be treated as a small design deliverable frozen *prior* to parallelization, not a byproduct of implementation.
@@ -91,18 +91,18 @@ Tags are attached to individual descriptions rather than headings.
 ## types.ts Sharing Budget and Limits of Verify
 
 - A green `npm run verify` is highly effective, but not the sole metric of success. `[Observation]`
-- Evaluating Membrain outcomes requires at least four layers: `[Core Hypothesis]`
+- Evaluating Spacta outcomes requires at least four layers: `[Core Hypothesis]`
   1. **Structural Measurement**: Are L1–L6 green? Is Core free of IO? Is feature isolation maintained?
   2. **Type/Contract Measurement**: Is there any dead-export? Does any single-owner-export remain in `types.ts`? Are DB/API contracts clearly sourced?
   3. **Experience Measurement**: Does it look like the same app? Are color, density, copy, and navigation aligned?
   4. **Operational Measurement**: Was it easy to implement in parallel? Was the cause of errors localized? Did the number of files touched for a typical edit decrease?
   - Verify directly inspects 1, and can be expanded to check parts of 2 and the vocabulary aspect of 3. Synthesizing quality in 3 and developer experience in 4 requires human or advanced model evaluation.
   - Core phrasing: **Verify is a passing condition, not a success condition.**
-- This understanding does not weaken Membrain, but strengthens it. By clarifying what verify checks, we can integrate the remaining judgments into our process. `[Implication]`
+- This understanding does not weaken Spacta, but strengthens it. By clarifying what verify checks, we can integrate the remaining judgments into our process. `[Implication]`
 - Dead-export and single-owner-export catch misplaced contracts mechanically. However, the decision of whether to move local-use types to their owner files is not automated. `[Implication]`
   - Single-owner-export can include false positives or design-stage sharing candidates, and thus remains permanently as info, not failing. "Just one place today" is left to human/AI judgment.
 - Even structural measurement (Layer 1) is incomplete with `verify` (without `--tsc`) alone. In practice, after moving types out of `types.ts` to their owners, **verify remained green while old unused import statements remained**, and only `tsc --noEmit` flagged red. Verify inspects laws (structural boundaries), not type resolution. `[Observation]`
-  - Core phrasing: **Green verify ≠ Green types.** The two are separate axes. Confusing green verify with type safety can lead to letting broken references pass during refactoring. We run `--tsc` / `tsc --noEmit` alongside verify, and state this in `MEMBRAIN.md` §3 and `verify/README` (fixing it as a procedure rather than telling developers to "be careful"). `[Implication]`
+  - Core phrasing: **Green verify ≠ Green types.** The two are separate axes. Confusing green verify with type safety can lead to letting broken references pass during refactoring. We run `--tsc` / `tsc --noEmit` alongside verify, and state this in `SPACTA.md` §3 and `verify/README` (fixing it as a procedure rather than telling developers to "be careful"). `[Implication]`
 
 ## Loopholes in Law Scope — Declared in Prose, Ignored by Tools
 
@@ -119,8 +119,8 @@ Tags are attached to individual descriptions rather than headings.
   - The takeaway: Unrelated to the model's absolute capability limits, the "attention context-switching cost" itself degrades accuracy. Tasks should be structured to avoid this.
 - LLMs operate in three thinking states: "Read", "Think", and "Write". It is ideal when a single state dominates the load throughout the task (a concentrated 2:7:1 ratio rather than a dispersed 4:4:1). `[Observation]`
   - The orchestrating AI at the top layer experiences an explosion in cognitive load when attempting to grasp the context of the entire application. As implementation progresses, matching implementation with specifications adds to this load, easily breaking the single-state dominance. `[Observation]`
-  - The solution: Delegate decision-making authority to lower layers (feature/Core/Shell) to structurally relieve the top layer's load. This aligns perfectly with the role already played by Membrain's "feature isolation / horizontal isolation." `[Implication]`
-- This phenomenon is not unique to Membrain, but is background knowledge underpinning all AI-collaborative development. `[Implication]`
-  - Third parties adopting Membrain do not necessarily need to know this background. It serves as the origin context preserved as a common language between humans and AI.
-  - Note: The specific conclusion derived from this in old v3 ("prefer one giant file over multiple short files, eliminate imports") has been retracted (see `docs_HUMAN-ONLY/membrain-alpha-evaluation-archive.md` "Expiry of the Dependency Graph Tracking Cost Assumption"). What we preserve here is not that conclusion, but the existence of the attention context-switching cost phenomenon itself.
+  - The solution: Delegate decision-making authority to lower layers (feature/Core/Shell) to structurally relieve the top layer's load. This aligns perfectly with the role already played by Spacta's "feature isolation / horizontal isolation." `[Implication]`
+- This phenomenon is not unique to Spacta, but is background knowledge underpinning all AI-collaborative development. `[Implication]`
+  - Third parties adopting Spacta do not necessarily need to know this background. It serves as the origin context preserved as a common language between humans and AI.
+  - Note: The specific conclusion derived from this in old v3 ("prefer one giant file over multiple short files, eliminate imports") has been retracted (see `docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md` "Expiry of the Dependency Graph Tracking Cost Assumption"). What we preserve here is not that conclusion, but the existence of the attention context-switching cost phenomenon itself.
 

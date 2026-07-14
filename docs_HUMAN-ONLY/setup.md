@@ -1,6 +1,6 @@
-# Membrain Bootstrap & Setup Guide (HUMAN ONLY)
+# Spacta Bootstrap & Setup Guide (HUMAN ONLY)
 
-This guide explains how to bootstrap a new Membrain-compliant project. 
+This guide explains how to bootstrap a new Spacta-compliant project. 
 If you are an AI developer, you do not need to read this for daily implementation tasks.
 
 ## 5 Steps to Bootstrap Phase 0
@@ -18,7 +18,7 @@ If you are an AI developer, you do not need to read this for daily implementatio
    Ensure `verify` is set up as a CI gate (pre-commit or GitHub Actions).
 3. **Follow the Form**: Implement features following the **default form**: `src/features/<name>/{types,core,shell}` + `src/shared/{runEffect,source}` + `app/**/page.tsx`. The bundled verifier assumes this structure.
 4. **Run**: Keep `npm run verify` green. Ensuring the L6 self-test passes first is proof that the verifier is functioning.
-5. **Customizing the Form**: As stated in `MEMBRAIN.md` §2, the Form is flexible. However, if you change it, make sure the target paths/rules in `verify/verify.mjs` are updated accordingly. The L6 self-test will detect any omissions. **Emptying the verifier's checks is strictly prohibited.**
+5. **Customizing the Form**: As stated in `SPACTA.md` §2, the Form is flexible. However, if you change it, make sure the target paths/rules in `verify/verify.mjs` are updated accordingly. The L6 self-test will detect any omissions. **Emptying the verifier's checks is strictly prohibited.**
 
 ---
 

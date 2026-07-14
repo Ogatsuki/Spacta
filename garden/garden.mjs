@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Membrain garden — 庭師の「目」（C1）。
+ * Spacta garden — 庭師の「目」（C1）。
  *
  * verify の info/warn（機械が見つけるが直す担い手が居なかったもの）を集約し、
  * AI（庭師エージェント）が機械的に消化できる「お掃除指示書」JSON に変換する。
@@ -81,7 +81,7 @@ if (!existsSync(verifyPath)) {
   process.exit(2);
 }
 
-const tmp = mkdtempSync(join(tmpdir(), "membrain-garden-"));
+const tmp = mkdtempSync(join(tmpdir(), "spacta-garden-"));
 const jsonPath = join(tmp, "verify.json");
 const run = spawnSync(process.execPath, [verifyPath, projectRoot, `--json=${jsonPath}`], {
   encoding: "utf8",
@@ -153,7 +153,7 @@ const summary = {};
 for (const t of tasks) summary[t.kind] = (summary[t.kind] ?? 0) + 1;
 
 const report = {
-  tool: "membrain-garden",
+  tool: "spacta-garden",
   schemaVersion: 1,
   projectRoot: result.projectRoot,
   verifyStatus: verifyRed ? "red" : "green",
@@ -162,7 +162,7 @@ const report = {
     ? "verify が赤（法違反 or self-test 失敗）。庭仕事の前に npm run verify を緑にせよ。"
     : null,
   instructions:
-    "このファイルは Membrain 庭師（garden）のお掃除指示書。手順とガードレールは Membrain/garden/GARDENER.md を読むこと。" +
+    "このファイルは Spacta 庭師（garden）のお掃除指示書。手順とガードレールは Spacta/garden/GARDENER.md を読むこと。" +
     "tasks を上から機械的に消化し、各変更後に npm run verify の緑を保て。挙動を変える変更は庭仕事ではない。",
   summary,
   tasks,
@@ -175,7 +175,7 @@ const text = JSON.stringify(report, null, 2) + "\n";
 if (outPath === "-") process.stdout.write(text);
 else writeFileSync(outPath, text);
 
-console.log(`\n[Membrain garden] target = ${projectRoot}`);
+console.log(`\n[Spacta garden] target = ${projectRoot}`);
 console.log(`verify: ${report.verifyStatus}${verifyRed ? "（庭仕事は保留。先に法を直せ）" : ""}`);
 if (!verifyRed) {
   if (tasks.length === 0) console.log("お掃除タスク: なし（庭は手入れ済み）");
