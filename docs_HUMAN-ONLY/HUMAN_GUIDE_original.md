@@ -1,10 +1,23 @@
 # Spacta — AI-First Vibe Coding Guide & Architecture
 
-Welcome to Spacta. This guide outlines how Spacta enables ultra-high-velocity **AI-First Vibe Coding** by defining clean, tool-verified boundaries between pure logic and side effects.
+Welcome to Spacta. 
+Spacts is a AI-friendly framework for vibe coder width Next.js App.
 
-> **Note for AI Developers**: Do not read this file. Refer directly to [SPACTA.md](../SPACTA.md) for execution rules.
+When we develop Next.js App, the logic and code will go to entangled and complicated one, that is no garanteed the "correct code" and no way to find out wrong logic point automatically.
+This is Human-frirendly because the common components reduce total code ammount Human writes and  to maintenance but not for not AI-friendly.
+one task need AI to read lots of file that is impor
+
+
 
 ---
+
+## 0. What is Spacta
+
+
+Spacta has 3 features mainly.
+
+1. 
+
 
 ## 1. The Core Vision: AI Writes, Humans Fine-tune
 
@@ -12,7 +25,6 @@ In standard development, writing state machines, validation rules, and integrati
 
 * **AI-First Development**: **AI writes 100% of the initial codebase**—both the pure business logic in `core.ts` and the UI structure in `shell.tsx` or `components/`.
 * **Optional Human Intervention**: You are not a mandatory bottleneck. If the AI's generation works, you can ship it. However, if the UI needs to be pixel-perfect, or if the design demands subjective refinement, **you can step in to tweak the layout, styles, or CSS at any time**. 
-* **Zero Arbitrary Percentages**: There are no rigid quotas (like "90% AI / 10% Human"). You choose when and where to write code.
 
 ---
 

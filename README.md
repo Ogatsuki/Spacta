@@ -1,12 +1,14 @@
 # Spacta
 
-An AI-friendly, boundary-enforced Next.js development architecture.
+**Spacta lets an AI agent work on one feature of a large app without ever needing to hold the whole app in its head — and lets you prove it stayed inside the lines.**
+
+This is a **v0.9 / early feedback release** — the architecture works, but the docs are still rough in places. Feedback on what's confusing is very welcome.
 
 ---
 
 ## FOR AI DEVELOPERS
 
-If your a AI Agent, read only rulebook below.
+If you're an AI agent, read only the rulebook below.
 
 **[SPACTA.md](SPACTA.md)**
 
@@ -14,9 +16,9 @@ If your a AI Agent, read only rulebook below.
 
 ---
 
-## 👤 FOR HUMAN DEVELOPERS
+## FOR HUMAN DEVELOPERS
 
-If you are a Human and want to understand the architectural overview, philosophy, or user guide, read these file below:
+If you are a human and want to understand the architectural overview, philosophy, or user guide, read this file:
 
 **[docs_HUMAN-ONLY/HUMAN_GUIDE.md](docs_HUMAN-ONLY/HUMAN_GUIDE.md)**
 
