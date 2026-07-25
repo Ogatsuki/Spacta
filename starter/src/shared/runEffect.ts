@@ -1,17 +1,17 @@
 /**
- * runEffect = Effect を実行する「ただ1つ」の場所（L4）。
- * 非同期はここに隔離される。Effect を増やしたら、ここの case を足す。
- * default の assertNever があるので、足し忘れると tsc が落ちる＝静かな握りつぶしが起きない。
+ * runEffect = The ONLY place to execute Effect (L4).
+ * Async is isolated here. When adding Effect, add a case here.
+ * default has assertNever, so forgetting causes a tsc error = silent swallowing doesn't happen.
  *
- * 注意: 手書き Effect switch は「shell.tsx の中」では verify(L4)に弾かれる。
- * switch を書いてよいのはこのファイル（共有ランタイム）だけ、という運用に倒している。
+ * Note: Manual Effect switch is rejected by verify (L4) inside shell.tsx.
+ * Only this file (shared runtime) is allowed to write switch, by operational policy.
  */
 import { Effect, assertNever } from "./types";
 
 export async function runEffect(effect: Effect): Promise<void> {
   switch (effect.type) {
     case "SAVE":
-      // 例: await fetch(...) / await prisma.x.create(...) などの本物のIOはここで行う
+      // Example: Real IO like await fetch(...) / await prisma.x.create(...) is done here
       return;
     case "LOG":
       console.log(effect.message);

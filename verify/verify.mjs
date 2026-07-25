@@ -40,15 +40,22 @@ const jsonFlag = process.argv.find((a) => a === "--json" || a.startsWith("--json
 const JSON_OUT = jsonFlag ? (jsonFlag.startsWith("--json=") ? resolve(jsonFlag.slice("--json=".length)) : null) : undefined;
 const FIXTURES = join(__dirname, "fixtures");
 
-// typescript はターゲットプロジェクトの node_modules から解決する
-// （このスクリプトを実際にプロジェクトへ置けば、ただの import 'typescript' で済む）
-const require = createRequire(join(projectRoot, "package.json"));
+// Resolve `typescript` from the target project first (a project placing this script inside
+// itself would just `import 'typescript'`). Fall back to the verifier's own dependency so a
+// target without node_modules — notably `starter/` — can still be verified. Without this
+// fallback the reference implementation cannot be part of the regression corpus.
 let ts;
 try {
-  ts = require("typescript");
+  ts = createRequire(join(projectRoot, "package.json"))("typescript");
 } catch {
-  console.error(`typescript をプロジェクトから解決できません: ${projectRoot}\n  -> cd ${projectRoot} && npm install を先に。`);
-  process.exit(2);
+  try {
+    ts = createRequire(join(__dirname, "..", "package.json"))("typescript");
+  } catch {
+    console.error(
+      `Cannot resolve 'typescript' from the target project (${projectRoot}), ` +
+      `nor from the verifier itself.\n  -> run npm install in either location.`);
+    process.exit(2);
+  }
 }
 
 // ───────────────────────── ユーティリティ ─────────────────────────
@@ -152,6 +159,20 @@ function getViolationDetails(v) {
       } else {
         fix = "Avoid hardcoded grayscales or color/opacity. Use semantic theme tokens (e.g. bg-background, text-foreground).";
       }
+      break;
+    case "L9":
+      name = "Presentation Purity";
+      why = v.msg;
+      if (v.msg.includes("non-deterministic")) {
+        fix = "Receive time/ids/random values as props. Presentation never generates them (L3).";
+      } else {
+        fix = "Declare an Effect from Core and let shared/runEffect execute it. Presentation only renders.";
+      }
+      break;
+    case "L10":
+      name = "Component Statelessness";
+      why = v.msg;
+      fix = "Lift this state into Core (State + Action) and pass it down as props, or hold it in shell.tsx. shared/ui primitives may keep widget-local state; feature components may not.";
       break;
     case "clone":
       name = "UI Duplication";
@@ -437,6 +458,90 @@ export function checkPresentationPurity(file, text) {
   return out;
 }
 
+// ───────────────────────── L9 Presentation Purity ─────────────────────────
+// Presentation files (feature components + shared/ui) must not perform IO and must not
+// generate non-determinism. Uniform across both tiers — no exception clause.
+//
+// Deliberately NOT reusing L2's forbidden set: `react` and `next/link` are legitimate
+// vocabulary for a presentation file, and applying checkCorePurity here produces 21 false
+// positives with 0 true positives on a real codebase (measured on livingdoc).
+//
+// `window` / `document` are deliberately absent from this list. Wiring DOM events does not
+// move data across the membrane, and banning it would make interactive primitives
+// (Dialog, Tabs, Combobox) impossible to write in shared/ui.
+const PRESENTATION_FORBIDDEN_IMPORT =
+  /(^|\/)(prisma|@prisma|.*client-gateway|.*gateway)(\/|$)|^next\/navigation$/i;
+const PRESENTATION_FORBIDDEN_GLOBALS = new Set(["fetch", "XMLHttpRequest", "localStorage", "sessionStorage"]);
+
+export function checkPresentationBehaviour(file, text) {
+  const sf = parse(file, text);
+  const out = [];
+  eachNode(sf, (n) => {
+    const loc = locOf(sf, n);
+    if ((ts.isFunctionDeclaration(n) || ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isMethodDeclaration(n)) &&
+        n.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+      out.push(V(file, loc.line, loc.col, "L9", "async functions are prohibited in presentation files. Declare an Effect and let runEffect execute it"));
+    }
+    if (ts.isAwaitExpression(n)) {
+      out.push(V(file, loc.line, loc.col, "L9", "await is prohibited in presentation files. Declare an Effect and let runEffect execute it"));
+    }
+    if (ts.isNewExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "Date") {
+      out.push(V(file, loc.line, loc.col, "L9", "new Date() is non-deterministic. Receive 'now' as a prop (L3)"));
+    }
+    if (ts.isPropertyAccessExpression(n)) {
+      if (ts.isIdentifier(n.expression)) {
+        const k = `${n.expression.text}.${n.name.text}`;
+        if (k === "Date.now") out.push(V(file, loc.line, loc.col, "L9", "Date.now() is non-deterministic. Receive 'now' as a prop (L3)"));
+        if (k === "Math.random") out.push(V(file, loc.line, loc.col, "L9", "Math.random() is non-deterministic. Inject the value (L3)"));
+      }
+      if (n.name.text === "randomUUID" || n.name.text === "getRandomValues") {
+        out.push(V(file, loc.line, loc.col, "L9", `${n.name.text}() is non-deterministic. Ids must be injected, never generated in presentation (L3)`));
+      }
+    }
+    if (ts.isIdentifier(n) && PRESENTATION_FORBIDDEN_GLOBALS.has(n.text)) {
+      const parent = n.parent;
+      const isPropName = parent && ts.isPropertyAccessExpression(parent) && parent.name === n;
+      const isDecl = parent && (ts.isImportSpecifier(parent) || ts.isBindingElement(parent) || ts.isParameter(parent));
+      if (!isPropName && !isDecl) {
+        out.push(V(file, loc.line, loc.col, "L9", `${n.text} is IO. Prohibited in presentation — route it through an Effect`));
+      }
+    }
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
+      const spec = n.moduleSpecifier.text;
+      if (PRESENTATION_FORBIDDEN_IMPORT.test(spec)) {
+        out.push(V(file, loc.line, loc.col, "L9",
+          `Import of '${spec}' is prohibited in presentation. Imperative navigation and data access belong in Effects (<Link> is fine)`));
+      }
+    }
+  });
+  return out;
+}
+
+// ───────────────────────── L10 Component Statelessness ─────────────────────────
+// A feature component is a pure function of its props. All state lives in Core.
+//
+// Scoped to features/*/components/ only. shared/ui primitives legitimately own widget-local
+// state (disclosure, focus trap, popover position) — that state is not domain state and it
+// never crosses the membrane, so it is out of scope here rather than an exception to a rule.
+const COMPONENT_STATE_HOOKS = new Set(["useState", "useReducer", "useEffect", "useLayoutEffect"]);
+
+export function checkComponentStatelessness(file, text) {
+  const sf = parse(file, text);
+  const out = [];
+  eachNode(sf, (n) => {
+    if (!ts.isCallExpression(n)) return;
+    const callee = n.expression;
+    const name = ts.isIdentifier(callee)
+      ? callee.text
+      : ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.name) ? callee.name.text : null;
+    if (!name || !COMPONENT_STATE_HOOKS.has(name)) return;
+    const loc = locOf(sf, n);
+    out.push(V(file, loc.line, loc.col, "L10",
+      `${name}() in a feature component. Components are pure functions of their props — move this state or lifecycle into Core (State/Action) or the shell`));
+  });
+  return out;
+}
+
 // ───────────────────────── クローン検知（UI重複 / info・burn-in・B3）─────────────────────────
 // 「同じUIが2回」を検知して info（＝庭師への指示書）にする。
 // Tailwind クラスの順不同問題に必ず対処する：className を集合（順序無視）に正規化し、
@@ -657,68 +762,141 @@ function featureNameOf(file) {
   return m ? m[1] : null;
 }
 
+// The single registry of "which law scans which files".
+//
+// Why a table instead of inline globs: the scan, the scanned-count report and the trust
+// boundary printed at the end all read this one table. A law's declared scope and the file
+// set actually walked therefore cannot drift apart — the recurring failure mode recorded in
+// spacta-alpha-evaluation.md as "Loopholes in Law Scope" (a Law's name is broad, its scan is
+// narrow, and the gap silently stays "hope").
+//
+//   root     : (projectRoot) => directory to walk
+//   match    : (posix path)  => is this file in scope for this check?
+//   run      : (file, text)  => violations          [per-file checks]
+//   batch    : ([{file,text}]) => violations        [checks that are inherently cross-file]
+//   promise  : one line stating what a green run guarantees. null for info-level checks,
+//              which are deliberately excluded from the guarantee list.
+const CHECKS = [
+  {
+    law: "L1", name: "cross-feature-imports", severity: "err",
+    root: (r) => join(r, "src", "features"),
+    match: (q) => /\.(ts|tsx)$/.test(q),
+    run: (f, text) => {
+      const fn = featureNameOf(f);
+      return fn ? checkCrossFeatureImport(f, text, fn) : [];
+    },
+    promise: "No feature imports another feature's internals",
+  },
+  {
+    law: "L2", name: "core-purity", severity: "err",
+    root: (r) => join(r, "src"),
+    match: (q) => /(^|\/)core\.ts$/.test(q),
+    run: (f, text) => checkCorePurity(f, text),
+    promise: "core.ts holds no IO and no non-determinism",
+  },
+  {
+    // Scope widened from `shell.tsx` to the whole feature tree. SPACTA.md states L4 without
+    // limiting it to shells, and two blind spots followed from the narrower walk:
+    // features that have no shell.tsx were never checked at all, and the canonical
+    // `shared/runEffect.ts` — the one switch that most needs an exhaustive terminator —
+    // was itself unscanned. No false positives can arise: checkEffectRuntime returns early
+    // for any file without a switch on `effect.type`.
+    law: "L4", name: "effect-runtime", severity: "err",
+    root: (r) => join(r, "src"),
+    match: (q) => /\.(ts|tsx)$/.test(q),
+    run: (f, text) => checkEffectRuntime(f, text),
+    promise: "Every handwritten switch on effect.type terminates exhaustively",
+  },
+  {
+    law: "L5", name: "source-purity", severity: "err",
+    root: (r) => join(r, "app"),
+    match: (q) => /(^|\/)(page|route)\.tsx?$/.test(q),
+    run: (f, text) => checkSourcePurity(f, text),
+    promise: "Server boundaries generate no ids, time or randomness",
+  },
+  {
+    law: "L7", name: "shared-features-isolation", severity: "err",
+    root: (r) => join(r, "src", "shared"),
+    match: (q) => /\.(ts|tsx)$/.test(q),
+    run: (f, text) => checkSharedReverseDependency(f, text),
+    promise: "shared/ does not import feature internals",
+  },
+  {
+    law: "L9", name: "presentation-behaviour", severity: "err",
+    root: (r) => join(r, "src"),
+    match: (q) => /\/features\/[^/]+\/components\/.*\.tsx$/.test(q) || /\/shared\/ui\/.*\.tsx$/.test(q),
+    run: (f, text) => checkPresentationBehaviour(f, text),
+    promise: "Components and shared/ui perform no IO and no non-determinism",
+  },
+  {
+    law: "L10", name: "component-statelessness", severity: "err",
+    root: (r) => join(r, "src", "features"),
+    match: (q) => /\/components\/.*\.tsx$/.test(q),
+    run: (f, text) => checkComponentStatelessness(f, text),
+    promise: "Feature components are pure functions of their props",
+  },
+  {
+    law: "L8", name: "presentation-purity", severity: "info",
+    root: (r) => join(r, "src", "features"),
+    match: (q) => /(^|\/)shell\.tsx$/.test(q) || /\/components\/.*\.tsx$/.test(q),
+    run: (f, text) => checkPresentationPurity(f, text),
+    promise: null,
+  },
+  {
+    law: "—", name: "clone", severity: "info",
+    root: (r) => join(r, "src", "features"),
+    match: (q) => /(^|\/)shell\.tsx$/.test(q) || /\/components\/.*\.tsx$/.test(q),
+    batch: (files) => checkClones(files),
+    promise: null,
+  },
+  {
+    // Consumers are src/ + app/ in full; app/ must be included because routes and pages
+    // import feature types (walking src alone would mark those exports dead).
+    law: "—", name: "export-ownership", severity: "info",
+    root: (r) => join(r, "src", "features"),
+    match: (q) => /(^|\/)types\.ts$/.test(q),
+    batch: (typeFiles) => {
+      if (typeFiles.length === 0) return [];
+      const srcRoot = join(projectRoot, "src");
+      const consumerFiles = [
+        ...walkFiles(srcRoot, (p) => /\.(ts|tsx)$/.test(p)),
+        ...walkFiles(join(projectRoot, "app"), (p) => /\.(ts|tsx)$/.test(p)),
+      ];
+      const out = [];
+      for (const { file: tf, text } of typeFiles) {
+        const consumers = consumerFiles
+          .filter((c) => c !== tf)
+          .map((c) => ({ file: c, text: readFileSync(c, "utf8") }));
+        out.push(...checkDeadExports(tf, text, consumers, srcRoot));
+        out.push(...checkSingleOwnerExports(tf, text, consumers, srcRoot));
+      }
+      return out;
+    },
+    promise: null,
+  },
+];
+
 function runMainScan() {
-  const srcRoot = join(projectRoot, "src");
-  const appRoot = join(projectRoot, "app");
-  const all = [];
+  const violations = [];
+  const report = [];
+  const seen = new Set(); // distinct files any check actually looked at
 
-  // L2: */core.ts
-  for (const f of walkFiles(srcRoot, (p) => /(^|\/)core\.ts$/.test(p.replace(/\\/g, "/"))))
-    all.push(...checkCorePurity(f, readFileSync(f, "utf8")));
+  for (const c of CHECKS) {
+    const files = walkFiles(c.root(projectRoot), (p) => c.match(p.replace(/\\/g, "/")));
+    for (const f of files) seen.add(f);
 
-  // L1: features/ 配下すべて
-  for (const f of walkFiles(join(srcRoot, "features"), (p) => /\.(ts|tsx)$/.test(p))) {
-    const fn = featureNameOf(f);
-    if (fn) all.push(...checkCrossFeatureImport(f, readFileSync(f, "utf8"), fn));
+    const found = c.batch
+      ? c.batch(files.map((f) => ({ file: f, text: readFileSync(f, "utf8") })))
+      : files.flatMap((f) => c.run(f, readFileSync(f, "utf8")));
+
+    violations.push(...found);
+    report.push({
+      law: c.law, name: c.name, severity: c.severity, promise: c.promise,
+      scanned: files.length, found: found.length,
+    });
   }
 
-  // L4: */shell.tsx
-  for (const f of walkFiles(srcRoot, (p) => /(^|\/)shell\.tsx$/.test(p.replace(/\\/g, "/"))))
-    all.push(...checkEffectRuntime(f, readFileSync(f, "utf8")));
-
-  // L5: app/**/page.tsx + app/**/route.ts（server 境界。純度の基準は page/route で同じ）
-  for (const f of walkFiles(appRoot, (p) => /(^|\/)(page|route)\.tsx?$/.test(p.replace(/\\/g, "/"))))
-    all.push(...checkSourcePurity(f, readFileSync(f, "utf8")));
-
-  // L7: shared/ 配下すべて（逆依存防止）
-  const sharedRoot = join(srcRoot, "shared");
-  if (existsSync(sharedRoot)) {
-    for (const f of walkFiles(sharedRoot, (p) => /\.(ts|tsx)$/.test(p))) {
-      all.push(...checkSharedReverseDependency(f, readFileSync(f, "utf8")));
-    }
-  }
-
-  // L8: feature の shell.tsx + components/ 配下の .tsx（提示純度・info）
-  for (const f of walkFiles(join(srcRoot, "features"), (p) => {
-    const q = p.replace(/\\/g, "/");
-    return /(^|\/)shell\.tsx$/.test(q) || /\/components\/.*\.tsx$/.test(q);
-  }))
-    all.push(...checkPresentationPurity(f, readFileSync(f, "utf8")));
-
-  // クローン検知（info・B3）: feature の shell.tsx + components/ を横断して UI 重複を拾う
-  const cloneFiles = walkFiles(join(srcRoot, "features"), (p) => {
-    const q = p.replace(/\\/g, "/");
-    return /(^|\/)shell\.tsx$/.test(q) || /\/components\/.*\.tsx$/.test(q);
-  }).map((f) => ({ file: f, text: readFileSync(f, "utf8") }));
-  all.push(...checkClones(cloneFiles));
-
-  // export 所有状況（info）: features/**/types.ts の死蔵 export / 単独所有 export を検知。
-  // 消費者 = src/ + app/ の全 .ts/.tsx（その types.ts 自身は除外）。app/ を必ず含める
-  //（API route や page が feature 型を import するため。src だけ見ると誤って dead 判定する）。
-  const consumerFiles = [
-    ...walkFiles(srcRoot, (p) => /\.(ts|tsx)$/.test(p)),
-    ...walkFiles(appRoot, (p) => /\.(ts|tsx)$/.test(p)),
-  ];
-  for (const tf of walkFiles(join(srcRoot, "features"), (p) => /(^|\/)types\.ts$/.test(p.replace(/\\/g, "/")))) {
-    const consumers = consumerFiles
-      .filter((c) => c !== tf)
-      .map((c) => ({ file: c, text: readFileSync(c, "utf8") }));
-    const typesText = readFileSync(tf, "utf8");
-    all.push(...checkDeadExports(tf, typesText, consumers, srcRoot));
-    all.push(...checkSingleOwnerExports(tf, typesText, consumers, srcRoot));
-  }
-
-  return all;
+  return { violations, report, scannedTotal: seen.size };
 }
 
 // Info checks (non-blocking): types.ts line budget / tsconfig include
@@ -829,6 +1007,42 @@ function runSelfTest() {
       expect: [],
       label: "L8 does not trigger false positives on clean presentation"
     },
+    // L9: rejects IO/non-determinism in presentation / does not flag react + next/link
+    {
+      exec: () => checkPresentationBehaviour(F("bad-presentation-io.component.tsx"), read("bad-presentation-io.component.tsx")),
+      expect: [
+        { rule: "L9", line: 4 },
+        { rule: "L9", line: 6 },
+        { rule: "L9", line: 7 },
+        { rule: "L9", line: 7 },
+        { rule: "L9", line: 8 },
+        { rule: "L9", line: 9 },
+        { rule: "L9", line: 10 },
+        { rule: "L9", line: 11 }
+      ],
+      label: "L9 rejects IO and non-determinism in a presentation file"
+    },
+    {
+      exec: () => checkPresentationBehaviour(F("good-presentation-io.component.tsx"), read("good-presentation-io.component.tsx")),
+      expect: [],
+      label: "L9 does not flag react type imports or next/link"
+    },
+    // L10: rejects state/lifecycle hooks in feature components
+    {
+      exec: () => checkComponentStatelessness(F("bad-component-state.component.tsx"), read("bad-component-state.component.tsx")),
+      expect: [
+        { rule: "L10", line: 6 },
+        { rule: "L10", line: 7 }
+      ],
+      label: "L10 rejects state and lifecycle hooks in a feature component"
+    },
+    // Tier separation: an interactive shared/ui primitive keeps widget-local state and wires
+    // DOM events. L9 must stay silent here — see the fixture's own comment for why.
+    {
+      exec: () => checkPresentationBehaviour(F("good-shared-ui.ui.tsx"), read("good-shared-ui.ui.tsx")),
+      expect: [],
+      label: "L9 allows hooks and DOM event wiring in a shared/ui primitive"
+    },
     // clone(B3): detects UI duplication ignoring className order / avoids false positives
     {
       exec: () => checkClones([
@@ -934,6 +1148,9 @@ function emitJson(payload) {
     projectRoot,
     selfTest: payload.selfTest,
     status: payload.status,
+    // What was actually walked, per check. Consumers can tell "found nothing" from
+    // "looked at nothing" — see status "inconclusive".
+    scan: payload.scan ?? null,
     errors: (payload.errors ?? []).map(relV),
     warns: (payload.warns ?? []).map(relV),
     infos: (payload.infos ?? []).map(relV),
@@ -951,6 +1168,44 @@ function group(viols) {
   return byRule;
 }
 
+// What each check actually walked. Printed on every run so "found nothing" can never be
+// mistaken for "looked at nothing".
+function printScanReport(report) {
+  const w = Math.max(...report.map((r) => r.name.length));
+  console.log("  Scanned:");
+  for (const r of report) {
+    const mark = r.scanned === 0 ? "—" : r.severity === "info" ? "ⓘ" : r.found ? "✗" : "✓";
+    console.log(`    ${r.law.padEnd(3)} ${r.name.padEnd(w)}  ${String(r.scanned).padStart(4)} files   ${mark} ${r.found}`);
+  }
+  console.log("");
+}
+
+// The point of a green run is "accept this without reading it". The boundary of that
+// permission therefore has to be printed, not reconstructed by reading verify.mjs.
+// Entries below are the gaps that exist as of this version — each one is a real hole,
+// stated so that nobody has to discover it the hard way.
+const NOT_GUARANTEED = [
+  ["Type integrity (props / contracts)", "run `tsc --noEmit` separately"],
+  ["Judgement kept out of shell.tsx", "not checked (L10 covers components, not shells)"],
+  ["Widget-local state in shared/ui staying non-domain", "not checked — by design, see L10's scope"],
+  ["Effect results travelling back into Core", "not checked"],
+  ["Build order when delegating to parallel agents", "not checked — a procedure, not a property of the tree"],
+  ["Presentation consistency", "info only (L8), never blocks"],
+  ["Semantic correctness", "never checked"],
+];
+
+function printTrustBoundary(report) {
+  console.log("  Guaranteed by this green:");
+  for (const r of report.filter((x) => x.promise && x.severity === "err")) {
+    console.log(`    ${r.law.padEnd(3)} ${r.promise}  (${r.scanned} files)`);
+  }
+  const w = Math.max(...NOT_GUARANTEED.map(([k]) => k.length));
+  console.log("\n  NOT guaranteed by this green:");
+  for (const [what, how] of NOT_GUARANTEED) {
+    console.log(`    - ${what.padEnd(w)}  → ${how}`);
+  }
+}
+
 console.log(`\n[Spacta verify] target = ${projectRoot}\n`);
 
 // Run L6 self-test first. If the verifier is broken, subsequent greens cannot be trusted.
@@ -964,7 +1219,26 @@ if (selfFail.length) {
 }
 console.log("✓ L6 self-test: Verifier correctly rejects planted violations and avoids false positives.\n");
 
-const viols = runMainScan();
+const scan = runMainScan();
+const viols = scan.violations;
+printScanReport(scan.report);
+
+// L6 proves the verifier is not broken. This proves the verifier actually looked at something.
+// A run that walks zero files finds zero violations, and would otherwise be reported as green —
+// which is indistinguishable from the green of a checker that sees nothing. Refuse to name it.
+if (scan.scannedTotal === 0) {
+  console.error("verify: INCONCLUSIVE — 0 files were scanned.\n");
+  console.error(`  Nothing matched under ${projectRoot}`);
+  console.error("  Expected src/features/, src/shared/, src/**/core.ts or app/**/page.tsx.");
+  console.error("  Is the target path correct?\n");
+  emitJson({
+    selfTest: { ok: true, failures: [] },
+    status: "inconclusive",
+    scan: { total: 0, checks: scan.report },
+  });
+  process.exit(2);
+}
+
 const errors = viols.filter((v) => !v.warn && !v.info);
 const warns = viols.filter((v) => v.warn);
 const infoViols = viols.filter((v) => v.info);
@@ -987,7 +1261,10 @@ if (errors.length > 0) {
     console.log("");
   }
 } else {
-  console.log("✓ Laws (L1, L2, L4, L5, L7): No violations");
+  // Derived from CHECKS, never hardcoded: the list of laws claimed here cannot drift away
+  // from the list of laws actually run.
+  const enforced = scan.report.filter((r) => r.severity === "err").map((r) => r.law).join(", ");
+  console.log(`✓ Laws (${enforced}): No violations`);
 }
 
 if (warns.length > 0) {
@@ -1035,9 +1312,11 @@ if (RUN_TSC) {
 emitJson({
   selfTest: { ok: true, failures: [] },
   status: failed ? "red" : "green",
+  scan: { total: scan.scannedTotal, checks: scan.report },
   errors, warns, infos: infoViols, notes,
 });
 
 console.log("");
 if (failed) { console.error("verify: Red (merge blocked until violations are resolved)\n"); process.exit(1); }
-console.log("verify: Green\n");
+printTrustBoundary(scan.report);
+console.log("\nverify: Green\n");

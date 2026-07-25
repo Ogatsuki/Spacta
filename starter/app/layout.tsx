@@ -7,7 +7,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       <body>
         <AppShell
           title="Spacta starter"
-          description="共通の枠は app/layout.tsx と shared/ui に上げ、feature は中身だけを描く。"
+          description="Common frame is moved to app/layout.tsx and shared/ui; feature draws only the content."
         >
           {children}
         </AppShell>

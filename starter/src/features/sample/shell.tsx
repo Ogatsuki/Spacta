@@ -1,6 +1,6 @@
 /**
- * shell.tsx = UI と IO の縁（client）。枠は layout/shared-ui へ上げ、
- * ここには state 配線と Action 変換だけを残す。
+ * shell.tsx = Boundary between UI and IO (client). Frame is moved to layout/shared-ui,
+ * leaving only state wiring and Action transformation here.
  */
 "use client";
 import { useState } from "react";
@@ -14,12 +14,12 @@ export function SampleShell({ initData }: { initData: InitData }) {
   const [state, setState] = useState<State>(() => init(initData));
   const summary = summarize(state);
 
-  // 非決定性(now)は Shell(縁)で生成し、値として Core へ渡す（L3）。Core は生成しない。
+  // Non-determinism (now) is generated at Shell (boundary) and passed as a value to Core (L3). Core does not generate it.
   async function dispatch(make: (now: string) => Action) {
     const action = make(new Date().toISOString());
     const [next, effects] = update(state, action);
     setState(next);
-    for (const e of effects) await runEffect(e); // 実行は runEffect に隔離（L4）
+    for (const e of effects) await runEffect(e); // Execution is isolated in runEffect (L4).
   }
 
   return (

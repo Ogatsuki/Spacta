@@ -1,10 +1,10 @@
 /**
- * core.ts = 純粋計算だけ（L2）。verify が AST で IO 混入を弾く。
- *   - new Date()/Date.now()/Math.random()/fetch/await/async/prisma 等は書けない。
- *   - 時刻・乱数・id が欲しければ、生成せず InitData/Action の引数から受け取る（L3）。
+ * core.ts = Pure computation only (L2). verify checks AST to reject IO mixing.
+ *   - Cannot write new Date()/Date.now()/Math.random()/fetch/await/async/prisma, etc.
+ *   - If you need time/random/id, receive them as arguments from InitData/Action, not generated (L3).
  *
- * (state, action) => [state, effect[]] のステートマシン。async はここに無い。
- * 同じ純関数を Shell からも server page(SSR) からも呼べる。
+ * State machine of (state, action) => [state, effect[]]. No async here.
+ * The same pure function can be called from Shell or server page (SSR).
  */
 import { InitData, State, Action, Effect } from "./types";
 
@@ -23,14 +23,14 @@ export function update(state: State, action: Action): [State, Effect[]] {
       return [next, [{ type: "LOG", message: "reset" }]];
     }
     default: {
-      // 網羅性の番人（Action を増やしたら、ここで tsc が落ちる）
+      // Exhaustiveness guard: TypeScript will error here if you add new Action types.
       const _exhaustive: never = action;
       throw new Error(String(_exhaustive));
     }
   }
 }
 
-// SSR でも使える集計の純関数（L5: server page はこれを呼ぶだけにする）
+// Pure function for aggregation usable in SSR (L5: server page calls this only).
 export function summarize(state: State): string {
   return `count=${state.count} (at ${state.lastTouched})`;
 }

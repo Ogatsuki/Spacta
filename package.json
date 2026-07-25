@@ -4,8 +4,9 @@
   "description": "Spacta — Pure-boundary architecture physically enforced by AST static verification",
   "private": true,
   "scripts": {
-    "verify": "node verify/verify.mjs .",
-    "garden": "node garden/garden.mjs ."
+    "verify": "node verify/verify.mjs starter",
+    "verify:starter": "node verify/verify.mjs starter",
+    "garden": "node garden/garden.mjs starter"
   },
   "devDependencies": {
     "typescript": "^5"

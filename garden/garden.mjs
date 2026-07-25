@@ -122,7 +122,10 @@ function isSuppressed(relFile, line) {
 // ───────────────────── 指示書の組み立て ─────────────────────
 const tasks = [];
 const suppressed = [];
-const verifyRed = result.status === "red" || !result.selfTest?.ok;
+// Anything that is not an affirmative green blocks gardening — including the new
+// "inconclusive" status (verify walked 0 files). Fail safe: never garden a tree that
+// was never actually verified.
+const verifyRed = result.status !== "green" || !result.selfTest?.ok;
 
 if (!verifyRed) {
   const idSeen = new Map();
@@ -156,11 +159,13 @@ const report = {
   tool: "spacta-garden",
   schemaVersion: 1,
   projectRoot: result.projectRoot,
-  verifyStatus: verifyRed ? "red" : "green",
+  verifyStatus: result.status,
   blocked: verifyRed,
-  blockedReason: verifyRed
-    ? "verify が赤（法違反 or self-test 失敗）。庭仕事の前に npm run verify を緑にせよ。"
-    : null,
+  blockedReason: !verifyRed
+    ? null
+    : result.status === "inconclusive"
+      ? "verify が 0 ファイルしか走査していない（INCONCLUSIVE）。検証されていない木を庭仕事してはならない。対象パスを確認せよ。"
+      : "verify が赤（法違反 or self-test 失敗）。庭仕事の前に npm run verify を緑にせよ。",
   instructions:
     "このファイルは Spacta 庭師（garden）のお掃除指示書。手順とガードレールは Spacta/garden/GARDENER.md を読むこと。" +
     "tasks を上から機械的に消化し、各変更後に npm run verify の緑を保て。挙動を変える変更は庭仕事ではない。",
@@ -176,7 +181,7 @@ if (outPath === "-") process.stdout.write(text);
 else writeFileSync(outPath, text);
 
 console.log(`\n[Spacta garden] target = ${projectRoot}`);
-console.log(`verify: ${report.verifyStatus}${verifyRed ? "（庭仕事は保留。先に法を直せ）" : ""}`);
+console.log(`verify: ${report.verifyStatus}${verifyRed ? `（庭仕事は保留。${report.blockedReason}）` : ""}`);
 if (!verifyRed) {
   if (tasks.length === 0) console.log("お掃除タスク: なし（庭は手入れ済み）");
   else {

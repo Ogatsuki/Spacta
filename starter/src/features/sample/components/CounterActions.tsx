@@ -10,7 +10,7 @@ export function CounterActions({
 }) {
   return (
     <Panel>
-      <p className="text-sm text-foreground-muted">feature 固有の表示部品は feature 内 components/ に閉じ込める。</p>
+      <p className="text-sm text-foreground-muted">Feature-specific presentation parts stay inside that feature&apos;s own components/.</p>
       <div className="flex flex-wrap gap-3">
         <Button onClick={onIncrement}>+1</Button>
         <Button onClick={onReset} tone="secondary">
