@@ -1,6 +1,112 @@
 # Changelog
 
-## Unreleased
+## 0.9.3 — Closing the write path's return route
+
+0.9.1 and 0.9.2 made green honest about what the verifier *walks*. This release closes the one
+gap that needed a judgement call rather than an implementation: **the result of an Effect had
+no way back into Core.** L3 already demanded that non-determinism — explicitly including
+server-assigned IDs and failures — be injected as values, but only the inbound half was
+enforced, because L3 had no scan of its own and delegated to L2, which only reads `core.ts`.
+
+The whole release adds **zero new Laws and zero net lines to `SPACTA.md`** (still 67). The
+enforcement is split: `verify` requires the receptacle to exist, TypeScript's exhaustiveness
+check forces `update()` to handle it. Nothing new had to be memorised.
+
+### Breaking — what a green `verify` means has changed
+
+- A feature whose Core builds an `Effect` carrying a `correlationId` now **fails** unless it
+  declares an Action able to receive the answer. Existing projects are unaffected until they
+  adopt `correlationId`: the check keys off construction sites, so adoption is per feature.
+- A check that scanned **0 files is no longer listed as guaranteed** (see below). Output that
+  previously claimed a law held may now say the law was not verified. The code did not change;
+  the claim did.
+- Running the verifier with no reference corpus beside it now exits `2`, not `0`.
+
+### Added
+
+- **L3 `effect-return` (err).** If a feature's `core.ts` constructs an Effect literal carrying a
+  `correlationId`, that feature's `types.ts` must declare an Action able to receive the answer.
+
+  The scoping is the interesting part. `Effect` is a single union in `shared/types.ts` shared by
+  every feature — L7 forces this, and the human guide records it as a tension between Laws — so
+  *"this feature's Effect"* does not exist at the type level. **Construction sites do.** Keying
+  the check off where an Effect is built, rather than where it is declared, sidesteps the
+  globalised vocabulary instead of fighting it. Measured against a real 6-feature project, one
+  of which had adopted the pattern: 0 findings, 0 false positives.
+
+  The receptacle must be an Action that is *not* the one requesting the write. Without that
+  refinement the check is nearly vacuous, since the Shell already passes a `correlationId`
+  inbound on the requesting Action.
+
+  Deliberate false negatives: no Action declaration beside `core.ts`, an unresolvable union
+  member, or no `correlationId` anywhere → silent. False positives are worse than false
+  negatives for a Law.
+- **The write-path pattern is in `starter/`.** `EffectResult`, an `Effect` carrying a
+  `correlationId`, `runEffect` returning data and throwing on failure, `EFFECT_SUCCEEDED` /
+  `EFFECT_FAILED` in the Action union, id injection and compensation in Core, and a `drain`
+  queue that does not drop Effects born from an answer.
+
+  `EffectResult` is **not** a fifth membrane vocabulary. It never crosses the membrane: the
+  Shell turns it into an Action, and the Action crosses. The vocabulary stays four.
+
+  `drain` is written as a module-level function, outside the component, and says in its own
+  comment that a domain `if` placed there is a judgement belonging in Core. A shell gets
+  rewritten as a feature grows; this loop should not be rewritten with it.
+- **`starter/app/api/sample/route.ts`.** L5 declared it scanned `route.ts` and no `route.ts`
+  existed — the declaration had outrun the example. Adding it surfaced a real contradiction:
+  L5 makes generating an ID at a boundary an `err`, while the write path depends on the server
+  assigning one. The resolution the example demonstrates is that **the handler never invents
+  the id — the database assigns it and the route carries it back.** L5's wording gained one
+  clause for this, since at a `route.ts` there is no upstream to "inject" from: a value
+  *returned by* IO is a Source read, not generation.
+
+### Changed — honesty of the output
+
+- **A check that scanned 0 files is never printed as guaranteed.** Only a whole-run total of
+  zero triggered `INCONCLUSIVE`; a single check at zero printed `—` and the guarantee list
+  still asserted its promise. Found concretely: Next.js officially supports `src/app/`, and in
+  that layout L5 walked zero files while the trust boundary reported *"Server boundaries
+  generate no ids, time or randomness"*. **The mechanism the project uses to be honest was
+  asserting something it had not checked.** Such checks now print under *"NOT verified in this
+  project (0 files matched — the law was not enforced here)"* with the roots they searched.
+
+  Zero files still does not fail the run: a project may legitimately have no app router or no
+  `components/` yet, and making that fatal would put the honest state out of reach and train
+  people to silence the check. Saying it out loud is the fix; refusing to run is not.
+- **L5 and the export-ownership consumer walk find the app router at `app/` or `src/app/`.**
+- **A missing reference corpus is `INCONCLUSIVE` (exit 2), not a printed `SKIPPED` that still
+  went green.** Deleting `starter/` silently removed the wiring test — an escape hatch of
+  exactly the kind 0.9.2 added the test to close. A declaration that does not block is not a
+  check.
+- **`verify/README.md`'s check table is generated from `CHECKS`,** wrapped in
+  `<!-- checks:begin/end -->` and regenerated by `--write-docs`. A `docs-drift` err fires when
+  the block and the registry disagree, so a stale table cannot be committed green. Generating
+  alone would have left a wish that someone runs the script. The duplicated law list in
+  `verify.mjs`'s header is gone, replaced by a pointer to `SPACTA.md` — two sources of truth
+  were what caused the drift.
+- **`verify/README.md` no longer claims "strong-prevention" for the tool.** The human guide
+  places the same tool on the bottom rung of the assurance ladder. The claim is now scoped to
+  what an individual check does, and notes that a misaimed check enforces nothing.
+- **Comment-language boundary is stated.** `verify.mjs`'s internal comments stay Japanese;
+  every printed string and every `CHECKS.promise` must be English. The boundary was already
+  being observed and is now written down.
+- `SPACTA.md` L3's enforcement column now describes the split between `verify` and `tsc`.
+  Stale `L1–L8` references (post-L9/L10) corrected in `starter/README.md` and the human guide.
+
+### Known gaps
+
+- **The round trip is still not traced.** The receptacle is required; a Shell that discards a
+  `runEffect` result stays green. No cheap AST test for the actual wiring is known.
+- **The check is opt-in by construction.** A feature that never mints a `correlationId` gets no
+  write-path guarantee — and no warning. Stated in `NOT guaranteed`.
+- **Concurrency is untouched.** `drain` starts from the state it was handed; a dispatch landing
+  mid-flight is not reconciled. `starter/` shows the correct shape, not a finished runtime.
+- **Framework file conventions are still enumerated by name.** The `src/app/` hole above was one
+  instance; `layout.tsx`, `error.tsx` and `middleware.ts` remain outside every `err` check. The
+  structural fix — classify by role behind a platform adapter, and report an unclassified file
+  rather than ignoring it — is not in this release.
+
+## 0.9.2 — Verifying that the checks are aimed at something
 
 Continues 0.9.1's theme — closing the distance between what a Law declares and what the
 verifier actually walks — with no change to the philosophy. Nothing here required a
@@ -21,8 +127,8 @@ judgement call; the one remaining gap that does (the write path) is still open.
   under test.** A failure names the offending check and exits `1`. When the corpus is absent
   (the verifier copied into a project that has no `starter/`), the test prints `SKIPPED` and
   states that the registry globs are unverified — it never silently passes, because a silent
-  pass is the defect it exists to catch. JSON output carries `selfTest.wiring`
-  (`"ok"` / `"skipped"`).
+  pass is the defect it exists to catch. (0.9.3 replaced that `SKIPPED` with `INCONCLUSIVE`:
+  printing a warning and continuing to green was still an escape hatch.)
 
 ### Changed
 
@@ -46,8 +152,8 @@ judgement call; the one remaining gap that does (the write path) is still open.
 
 The 0.9.1 list stands, minus one: **L6 verifying checker functions but not their wiring is
 now closed** (see Added). The write path's missing return route — and therefore the flight
-recorder's precondition — is untouched and remains the one open gap that needs a judgement
-call rather than an implementation.
+recorder's precondition — is untouched at this version and remains the one open gap that needs
+a judgement call rather than an implementation. (Closed in 0.9.3.)
 
 ## 0.9.1 — Making green honest
 

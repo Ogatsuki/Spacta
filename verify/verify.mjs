@@ -7,30 +7,23 @@
  *   `new Date()` を**見逃して緑を出した**（ニセの緑）。本スクリプトは TypeScript の
  *   AST を歩いて構文として検出する＝prevent-strong。
  *
- * チェック（SPACTA.md §1 の Law に対応。走査対象の正本は下部の CHECKS レジストリ）:
- *   L1 cross-feature-imports : feature が他 feature の内部を import していないか
- *   L2 core-purity           : src 配下すべての core.ts に IO(async/await/new Date/Date.now/Math.random/fetch/prisma/window…) が無いか
- *   L4 effect-runtime        : effect.type の switch に assertNever/:never 終端があるか（src 配下すべて。shared/runEffect.ts を含む）
- *   L5 source-purity         : app server 境界(page.tsx/route.ts) が非決定性(時刻/乱数/id)を直書き生成していないか（集計は warn）
- *   L7 shared-reverse-dep    : shared 配下が features の内部を import していないか（逆依存）
- *   L9 presentation-behaviour: features/<name>/components/ と shared/ui/ に IO・非決定性が無いか（next/link は許容、next/navigation は不可）
- *   L10 component-statelessness: features/<name>/components/ が props の純関数か（useState/useReducer/useEffect/useLayoutEffect 不可。shared/ui は対象外）
- *   L6 self-test             : (1) fixtures/ の「わざと壊した検体」を上記チェッカが必ず弾くか
- *                              (2) CHECKS レジストリの glob が参照コーパス(starter/)で 1 件以上選べているか
- *                              ＝検証器自身を検証する。これが無いと他の掟はメタレベルで hope に戻る。
- *   L8 presentation-purity   : shell/components に生色(#hex)/arbitrary値/無彩色パレット/色名＋透過度を直書きしていないか（info・burn-in。ステータス色とセマンティックトークンは許容）
- *   clone (B3)               : feature の shell/components 間で UI(JSX/className) が重複していないか（info・burn-in）
- *   おまけ: dead-export / single-owner-export / types.ts 行数（共有予算）/ tsconfig が app/ を include しているか
+ * 掟の正本は SPACTA.md §1、走査対象（どの掟がどのファイルを見るか）の正本は下部の CHECKS レジストリ。
+ * ここに一覧を書き写さない: 二重の正本が v0.9.1 のドリフトを生んだ。
+ *
+ * Comment language boundary: internal comments may be Japanese; every printed string and every CHECKS.promise must be English.
  *
  * 使い方:
- *   node verify.mjs <projectRoot>        # 既定: このスクリプトから見た ../../project
- *   node verify.mjs <projectRoot> --tsc  # 最後に tsc --noEmit も走らせる
- *   node verify.mjs <projectRoot> --json # 機械可読 JSON（garden が消費）
+ *   node verify.mjs <projectRoot>          # 既定: このスクリプトから見た ../../project
+ *   node verify.mjs <projectRoot> --tsc    # 最後に tsc --noEmit も走らせる
+ *   node verify.mjs <projectRoot> --json   # 機械可読 JSON（garden が消費）
+ *   node verify.mjs --write-docs           # verify/README.md のチェック表を CHECKS から再生成する
  *
  * 終了コード:
  *   0 = Green（err 違反なし。warn/info のみなら 0）
  *   1 = Red（err 違反あり、または L6 自己テスト/配線テストの失敗）
- *   2 = INCONCLUSIVE（1 ファイルも走査していない。「違反が無かった」と区別するため緑を名乗らない）
+ *   2 = INCONCLUSIVE（検証したと言えない状態。「違反が無かった」と区別するため緑を名乗らない）
+ *       - 1 ファイルも走査していない
+ *       - L6 配線テストの参照コーパス(starter/)が無く、レジストリの glob が未検証
  */
 
 import { createRequire } from "node:module";
@@ -45,6 +38,8 @@ const RUN_TSC = process.argv.includes("--tsc");
 // --json=<path> : 結果を機械可読 JSON で書き出す（garden 等のツール向け）。--json 単独なら stdout。
 const jsonFlag = process.argv.find((a) => a === "--json" || a.startsWith("--json="));
 const JSON_OUT = jsonFlag ? (jsonFlag.startsWith("--json=") ? resolve(jsonFlag.slice("--json=".length)) : null) : undefined;
+// --write-docs : verify/README.md のチェック表を CHECKS から再生成する（保守モード。検査はしない）。
+const WRITE_DOCS = process.argv.includes("--write-docs");
 const FIXTURES = join(__dirname, "fixtures");
 
 // Resolve `typescript` from the target project first (a project placing this script inside
@@ -137,6 +132,11 @@ function getViolationDetails(v) {
         fix = "Move IO/framework dependencies outside Core to Shell or runEffect.";
       }
       break;
+    case "L3":
+      name = "Injection (write-path return)";
+      why = v.msg;
+      fix = "Add an Action that carries the correlationId back (EFFECT_SUCCEEDED / EFFECT_FAILED) and handle it in update(). The Shell turns runEffect's outcome into that Action; Core stays the only writer of state.";
+      break;
     case "L4":
       name = "Exhaustiveness";
       why = v.msg;
@@ -195,6 +195,11 @@ function getViolationDetails(v) {
       name = "Single Owner Export";
       why = v.msg;
       fix = "Consider colocating this type/constant inside its single consumer file.";
+      break;
+    case "docs-drift":
+      name = "Documentation Drift";
+      why = v.msg;
+      fix = "Regenerate the table from the registry: node verify/verify.mjs --write-docs. Edit CHECKS in verify.mjs, never the table.";
       break;
     default:
       name = "Unknown Violation";
@@ -256,6 +261,151 @@ export function checkCorePurity(file, text) {
     }
   });
   return out;
+}
+
+// ───────────────────────── L3 effect-return（書き込み経路の帰り道）─────────────────────────
+// L3 の「行き」（時刻・乱数・id を値として注入する）は L2/L5/L9 の純度チェックが守っている。
+// 守られていなかったのは「帰り」——runEffect が実行した結果が Core に戻るか——である。
+// 答えを必要とする Effect は correlationId を持ち、Shell がその結末を Action に変えて Core へ返す。
+// ここで検査するのは**受け皿があるか**だけ。配線そのものは追跡しない（trust boundary に明記）。
+//
+// なぜ「宣言」ではなく「構築地点」で feature を切るのか:
+//   Effect は shared/types.ts の単一のグローバル union であり（L7 がそれを強制する）、
+//   「この feature の Effect」は型レベルには存在しない。だが構築地点は存在する——
+//   core.ts は effect のオブジェクトリテラルを組み立て、core.ts はちょうど1つの feature に属する。
+//
+// 誤検出は見逃しより高くつくので、判断できない形（Action が見つからない / union のメンバを
+// 解決できない）では黙って何も報告しない。以下はすべて「確信を持って言える時だけ言う」設計。
+
+// オブジェクトリテラルのプロパティ名（{ a, b: 1, "c": 2 }）を集める。スプレッドは名前が無いので無視。
+function objectLiteralPropNames(node) {
+  const names = new Set();
+  for (const p of node.properties) {
+    if ((ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p)) &&
+        (ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))) {
+      names.add(p.name.text);
+    }
+  }
+  return names;
+}
+
+// この構築地点を囲む `case "X":`（switch (action.type) のもの）の判別子を返す。
+// = 「この Effect を要求したのはどの Action か」。判定できなければ null（＝後段でより緩く判定する）。
+function enclosingActionCase(node) {
+  let p = node.parent;
+  while (p) {
+    if (ts.isCaseClause(p)) {
+      const sw = p.parent?.parent; // CaseClause → CaseBlock → SwitchStatement
+      const expr = sw && ts.isSwitchStatement(sw) ? sw.expression : null;
+      const isActionType =
+        expr && ts.isPropertyAccessExpression(expr) && ts.isIdentifier(expr.expression) &&
+        /action/i.test(expr.expression.text) && expr.name.text === "type";
+      return isActionType && ts.isStringLiteral(p.expression) ? p.expression.text : null;
+    }
+    p = p.parent;
+  }
+  return null;
+}
+
+// 型リテラル / interface の members から「correlationId を持つか」「type の判別子」を読む。
+function readMembers(node) {
+  let correlationId = false;
+  let discriminant = null;
+  for (const m of node.members) {
+    if (!ts.isPropertySignature(m) || !m.name) continue;
+    const name = ts.isIdentifier(m.name) || ts.isStringLiteral(m.name) ? m.name.text : null;
+    if (name === "correlationId") correlationId = true;
+    if (name === "type" && m.type && ts.isLiteralTypeNode(m.type) && ts.isStringLiteral(m.type.literal)) {
+      discriminant = m.type.literal.text;
+    }
+  }
+  return { correlationId, discriminant };
+}
+
+// union を平坦化してメンバの配列にする。1つでも解決できないメンバがあれば { unknown: true } を混ぜ、
+// 呼び出し側はそれを見て報告を取り下げる（＝読めなかったものを違反と呼ばない）。
+function flattenActionUnion(typeNode, decls, depth = 0) {
+  if (!typeNode || depth > 4) return [{ unknown: true }];
+  if (ts.isParenthesizedTypeNode(typeNode)) return flattenActionUnion(typeNode.type, decls, depth + 1);
+  if (ts.isUnionTypeNode(typeNode)) return typeNode.types.flatMap((t) => flattenActionUnion(t, decls, depth + 1));
+  if (ts.isTypeLiteralNode(typeNode)) return [readMembers(typeNode)];
+  if (ts.isTypeReferenceNode(typeNode) && ts.isIdentifier(typeNode.typeName)) {
+    const target = decls.get(typeNode.typeName.text);
+    if (!target) return [{ unknown: true }];
+    return ts.isInterfaceDeclaration(target)
+      ? [readMembers(target)]
+      : flattenActionUnion(target, decls, depth + 1);
+  }
+  if (ts.isIntersectionTypeNode(typeNode)) {
+    const parts = typeNode.types.flatMap((t) => flattenActionUnion(t, decls, depth + 1));
+    if (parts.some((p) => p.unknown)) return [{ unknown: true }];
+    return [{
+      correlationId: parts.some((p) => p.correlationId),
+      discriminant: parts.map((p) => p.discriminant).find(Boolean) ?? null,
+    }];
+  }
+  return [{ unknown: true }];
+}
+
+// 型宣言（type alias / interface）を name → node で集める。ここに載らない名前＝この2ファイルからは
+// 読めない型なので、候補にもならず、参照されれば unknown になる（＝報告しない）。
+// 他モジュールから import / re-export された Action は、そうやって自動的に対象外になる。
+function collectTypeDecls(file, text, into) {
+  const sf = parse(file, text);
+  eachNode(sf, (n) => {
+    if (ts.isTypeAliasDeclaration(n) && n.name && !into.has(n.name.text)) into.set(n.name.text, n.type);
+    else if (ts.isInterfaceDeclaration(n) && n.name && !into.has(n.name.text)) into.set(n.name.text, n);
+  });
+}
+
+// coreFile/coreText: feature の core.ts。typesFile/typesText: 同じ feature の types.ts（無ければ null）。
+// self-test はこの関数に fixture のテキスト対を直接渡す。
+export function checkEffectReturn(coreFile, coreText, typesFile, typesText) {
+  const csf = parse(coreFile, coreText);
+
+  // 1) 構築地点: type と correlationId の両方を持つオブジェクトリテラル ＝「答えを要求する Effect」。
+  const sites = [];
+  eachNode(csf, (n) => {
+    if (!ts.isObjectLiteralExpression(n)) return;
+    const names = objectLiteralPropNames(n);
+    if (!names.has("type") || !names.has("correlationId")) return;
+    sites.push({ ...locOf(csf, n), requestedBy: enclosingActionCase(n) });
+  });
+  if (sites.length === 0) return []; // correlationId を使っていない feature は対象外（opt-in）
+
+  // 2) 受け皿の宣言を読む。types.ts を正とし、core.ts 内の宣言も拾う（Form は可変なので）。
+  const decls = new Map();
+  if (typesText !== null && typesText !== undefined) collectTypeDecls(typesFile ?? coreFile, typesText, decls);
+  collectTypeDecls(coreFile, coreText, decls);
+
+  const names = [...decls.keys()];
+  const candidates = names.includes("Action") ? ["Action"] : names.filter((k) => /Action$/.test(k));
+  if (candidates.length === 0) return []; // Action 宣言が見当たらない＝読めていない。tsc の領分に任せる
+
+  const members = candidates.flatMap((k) => {
+    const d = decls.get(k);
+    return ts.isInterfaceDeclaration(d) ? [readMembers(d)] : flattenActionUnion(d, decls);
+  });
+  if (members.some((m) => m.unknown)) return []; // 解決できないメンバがある＝判断しない
+
+  // 3) 「答えの受け皿」= correlationId を持ち、かつ書き込みを要求した側の Action ではないメンバ。
+  //    要求側を除くのは、書き込みを頼む Action 自身が correlationId を運ぶのが常だから
+  //    （Shell が採番して渡す）。それを受け皿と数えると、この検査は常に緑になり無意味になる。
+  //    要求側の判別子が読めなかった場合は除外集合が空になり、判定は「correlationId を持つ
+  //    メンバが1つでもあるか」に緩む＝迷ったら通す。
+  const requesters = new Set(sites.map((s) => s.requestedBy).filter(Boolean));
+  const receptacles = members.filter((m) => m.correlationId && (m.discriminant === null || !requesters.has(m.discriminant)));
+  if (receptacles.length > 0) return [];
+
+  const site = sites[0];
+  const carriers = members.filter((m) => m.correlationId).map((m) => m.discriminant).filter(Boolean);
+  const listed = carriers.slice(0, 4).map((c) => `'${c}'`).join(", ") + (carriers.length > 4 ? ", …" : "");
+  const detail = carriers.length === 0
+    ? "no Action member carries a correlationId"
+    : `the only Action members carrying a correlationId (${listed}) are the ones requesting the write`;
+  return [V(coreFile, site.line, site.col, "L3",
+    `Core builds an Effect carrying a correlationId, but ${detail}. The result of that Effect has nowhere to land: ` +
+    `declare an Action for the answer (e.g. EFFECT_SUCCEEDED / EFFECT_FAILED with a correlationId) and handle it in update() (L3, outbound half)`)];
 }
 
 // ───────────────────────── L1 cross-feature import ─────────────────────────
@@ -777,12 +927,18 @@ function featureNameOf(file) {
 // spacta-alpha-evaluation.md as "Loopholes in Law Scope" (a Law's name is broad, its scan is
 // narrow, and the gap silently stays "hope").
 //
-//   root     : (projectRoot) => directory to walk
+//   root     : (projectRoot) => directory to walk, or an array of directories when a
+//              convention has more than one legal home (Next.js allows app/ and src/app/).
 //   match    : (posix path)  => is this file in scope for this check?
 //   run      : (file, text)  => violations          [per-file checks]
 //   batch    : ([{file,text}]) => violations        [checks that are inherently cross-file]
 //   promise  : one line stating what a green run guarantees. null for info-level checks,
 //              which are deliberately excluded from the guarantee list.
+// Next.js accepts the app router in either location. Both are walked: a project that chose the
+// other one is not a project without server boundaries, and a check that walks the wrong
+// directory silently enforces nothing (see printTrustBoundary's "NOT verified" group).
+const APP_ROOTS = (r) => [join(r, "app"), join(r, "src", "app")];
+
 const CHECKS = [
   {
     law: "L1", name: "cross-feature-imports", severity: "err",
@@ -802,6 +958,21 @@ const CHECKS = [
     promise: "core.ts holds no IO and no non-determinism",
   },
   {
+    // Scoped by construction site, not by declaration: `Effect` is one global union in
+    // shared/types.ts (L7 forces that), so "this feature's Effect" does not exist at the type
+    // level — but a core.ts does, and it belongs to exactly one feature. Needs the sibling
+    // types.ts as well, hence batch.
+    law: "L3", name: "effect-return", severity: "err",
+    root: (r) => join(r, "src", "features"),
+    match: (q) => /(^|\/)core\.ts$/.test(q),
+    batch: (coreFiles) => coreFiles.flatMap(({ file, text }) => {
+      const tf = join(dirname(file), "types.ts");
+      const exists = existsSync(tf);
+      return checkEffectReturn(file, text, exists ? tf : null, exists ? readFileSync(tf, "utf8") : null);
+    }),
+    promise: "An Effect that asks for an answer has an Action able to receive it",
+  },
+  {
     // Scope widened from `shell.tsx` to the whole feature tree. SPACTA.md states L4 without
     // limiting it to shells, and two blind spots followed from the narrower walk:
     // features that have no shell.tsx were never checked at all, and the canonical
@@ -816,7 +987,7 @@ const CHECKS = [
   },
   {
     law: "L5", name: "source-purity", severity: "err",
-    root: (r) => join(r, "app"),
+    root: (r) => APP_ROOTS(r),
     match: (q) => /(^|\/)(page|route)\.tsx?$/.test(q),
     run: (f, text) => checkSourcePurity(f, text),
     promise: "Server boundaries generate no ids, time or randomness",
@@ -857,18 +1028,20 @@ const CHECKS = [
     promise: null,
   },
   {
-    // Consumers are src/ + app/ in full; app/ must be included because routes and pages
-    // import feature types (walking src alone would mark those exports dead).
+    // Consumers are src/ + the app router in full; the app router must be included because
+    // routes and pages import feature types (walking src alone would mark those exports dead).
+    // Both app router locations are walked, and the list is de-duplicated because src/app/ is
+    // already inside the src/ walk.
     law: "—", name: "export-ownership", severity: "info",
     root: (r) => join(r, "src", "features"),
     match: (q) => /(^|\/)types\.ts$/.test(q),
     batch: (typeFiles) => {
       if (typeFiles.length === 0) return [];
       const srcRoot = join(projectRoot, "src");
-      const consumerFiles = [
+      const consumerFiles = [...new Set([
         ...walkFiles(srcRoot, (p) => /\.(ts|tsx)$/.test(p)),
-        ...walkFiles(join(projectRoot, "app"), (p) => /\.(ts|tsx)$/.test(p)),
-      ];
+        ...APP_ROOTS(projectRoot).flatMap((r) => walkFiles(r, (p) => /\.(ts|tsx)$/.test(p))),
+      ])];
       const out = [];
       for (const { file: tf, text } of typeFiles) {
         const consumers = consumerFiles
@@ -883,13 +1056,27 @@ const CHECKS = [
   },
 ];
 
+// root は1本でも配列でもよい。呼び出し側が毎回 Array.isArray を書かなくて済むようここで正規化する。
+function rootsOf(c, r) {
+  const v = c.root(r);
+  return Array.isArray(v) ? v : [v];
+}
+
+function filesOf(c, r) {
+  const out = new Set();
+  for (const root of rootsOf(c, r)) {
+    for (const f of walkFiles(root, (p) => c.match(p.replace(/\\/g, "/")))) out.add(f);
+  }
+  return [...out];
+}
+
 function runMainScan() {
   const violations = [];
   const report = [];
   const seen = new Set(); // distinct files any check actually looked at
 
   for (const c of CHECKS) {
-    const files = walkFiles(c.root(projectRoot), (p) => c.match(p.replace(/\\/g, "/")));
+    const files = filesOf(c, projectRoot);
     for (const f of files) seen.add(f);
 
     const found = c.batch
@@ -899,6 +1086,7 @@ function runMainScan() {
     violations.push(...found);
     report.push({
       law: c.law, name: c.name, severity: c.severity, promise: c.promise,
+      roots: rootsOf(c, projectRoot).map((p) => relative(projectRoot, p).replace(/\\/g, "/") || "."),
       scanned: files.length, found: found.length,
     });
   }
@@ -924,6 +1112,94 @@ function runInfoChecks() {
   return notes;
 }
 
+// ───────────────────────── README のチェック表（CHECKS からの生成物）─────────────────────────
+// v0.9.1 で README の表が実装からずれた。原因は「手書きの写し」という形そのものなので、
+// 表を CHECKS からの生成物にし、ずれていたら通常の verify が err で落ちるようにする。
+// 生成できるだけでは足りない: ずれた表をコミットしても緑になれるなら、正本は再び2つになる。
+const README_PATH = join(__dirname, "README.md");
+const CHECKS_BEGIN = "<!-- checks:begin -->";
+const CHECKS_END = "<!-- checks:end -->";
+
+// match は関数なので、そのソースから正規表現リテラルを取り出して表に載せる。
+// 文字クラス内の `/`（[^/]+ など）で切れないよう、素朴な走査で括弧とエスケープを見る。
+function extractRegexLiterals(src) {
+  const out = [];
+  let i = 0;
+  while (i < src.length) {
+    if (src[i] !== "/") { i++; continue; }
+    let j = i + 1, inClass = false, closed = false;
+    for (; j < src.length; j++) {
+      const ch = src[j];
+      if (ch === "\\") { j++; continue; }
+      if (ch === "\n") break;
+      if (inClass) { if (ch === "]") inClass = false; continue; }
+      if (ch === "[") { inClass = true; continue; }
+      if (ch === "/") { closed = true; break; }
+    }
+    if (!closed) { i++; continue; }
+    let k = j + 1;
+    while (k < src.length && /[gimsuy]/.test(src[k])) k++;
+    out.push(src.slice(i, k));
+    i = k;
+  }
+  return out;
+}
+
+function renderChecksTable() {
+  const cell = (s) => String(s).replace(/\|/g, "\\|"); // GFM: code span の中でも | は要エスケープ
+  const rows = CHECKS.map((c) => {
+    const roots = rootsOf(c, "").map((p) => `\`${cell(p.replace(/\\/g, "/"))}/\``).join(", ");
+    const patterns = extractRegexLiterals(c.match.toString());
+    const match = patterns.length ? patterns.map((p) => `\`${cell(p)}\``).join(" or ") : "—";
+    const kind = c.batch ? "batch" : "per file";
+    return `| ${c.law} | \`${c.name}\` | ${c.severity} | ${roots} | ${match} | ${c.promise ? cell(c.promise) : "—"} | ${kind} |`;
+  });
+  return [
+    "<!-- Generated from the CHECKS registry in verify.mjs by `node verify/verify.mjs --write-docs`.",
+    "     Do not edit by hand: a normal verify run reports an err when this block and CHECKS disagree. -->",
+    "",
+    "| Law | Check | Severity | Walks | Matches | Guarantee on green | Kind |",
+    "|---|---|---|---|---|---|---|",
+    ...rows,
+  ].join("\n");
+}
+
+function readChecksBlock() {
+  if (!existsSync(README_PATH)) return { missing: true };
+  const text = readFileSync(README_PATH, "utf8");
+  const b = text.indexOf(CHECKS_BEGIN);
+  const e = text.indexOf(CHECKS_END);
+  if (b < 0 || e < 0 || e < b) return { text, noMarkers: true };
+  return { text, b, e, inner: text.slice(b + CHECKS_BEGIN.length, e), line: text.slice(0, b).split(/\r?\n/).length };
+}
+
+function writeChecksTable() {
+  const blk = readChecksBlock();
+  if (blk.missing) return { ok: false, message: `--write-docs: no README to write at ${README_PATH}` };
+  if (blk.noMarkers) return { ok: false, message: `--write-docs: ${README_PATH} has no ${CHECKS_BEGIN} … ${CHECKS_END} block` };
+  const next = blk.text.slice(0, blk.b + CHECKS_BEGIN.length) + "\n" + renderChecksTable() + "\n" + blk.text.slice(blk.e);
+  if (next === blk.text) return { ok: true, message: `--write-docs: check table already up to date (${CHECKS.length} entries)` };
+  writeFileSync(README_PATH, next);
+  return { ok: true, message: `--write-docs: wrote the check table (${CHECKS.length} entries) into ${README_PATH}` };
+}
+
+function checkChecksTableDrift() {
+  const blk = readChecksBlock();
+  if (blk.missing) {
+    // README ごと持ち出された verify.mjs 単体コピーを赤にはしない。ただし黙りもしない。
+    return { violations: [], note: `check table drift not verified: no README at ${README_PATH}` };
+  }
+  if (blk.noMarkers) {
+    return { violations: [V(README_PATH, 1, 1, "docs-drift",
+      `verify/README.md has no ${CHECKS_BEGIN} … ${CHECKS_END} block, so the check table can no longer be generated from CHECKS. Restore the markers and run: node verify/verify.mjs --write-docs`)] };
+  }
+  if (blk.inner.trim() !== renderChecksTable().trim()) {
+    return { violations: [V(README_PATH, blk.line, 1, "docs-drift",
+      "The check table in verify/README.md no longer matches the CHECKS registry. The table is a generated artifact, not a hand-written copy: run `node verify/verify.mjs --write-docs`")] };
+  }
+  return { violations: [] };
+}
+
 // ───────────────────────── L6 self-test (Verifier Self-Verification) ─────────────────────────
 // 走査対象の「配線」を検証する参照コーパス。検証器と同梱の starter を使う。
 const CORPUS = join(__dirname, "..", "starter");
@@ -943,7 +1219,7 @@ function runWiringTest() {
   return CHECKS.map((c) => ({
     law: c.law,
     name: c.name,
-    scanned: walkFiles(c.root(CORPUS), (p) => c.match(p.replace(/\\/g, "/"))).length,
+    scanned: filesOf(c, CORPUS).length,
   })).filter((r) => r.scanned === 0);
 }
 
@@ -969,6 +1245,29 @@ function runSelfTest() {
       exec: () => checkCorePurity(F("good.core.ts"), read("good.core.ts")),
       expect: [],
       label: "L2 does not trigger false positives on a clean Core"
+    },
+    // L3: the write path's return leg. The planted violation is *partial adoption* — the
+    // Effect asks for an answer, the Action union has no member able to receive one.
+    {
+      exec: () => checkEffectReturn(F("bad-effect-return.core.ts"), read("bad-effect-return.core.ts"),
+        F("bad-effect-return.types.ts"), read("bad-effect-return.types.ts")),
+      expect: [
+        { rule: "L3", line: 14 }
+      ],
+      label: "L3 rejects an Effect carrying a correlationId with no Action to receive the answer"
+    },
+    {
+      exec: () => checkEffectReturn(F("bad-effect-return.core.ts"), read("bad-effect-return.core.ts"),
+        F("good-effect-return.types.ts"), read("good-effect-return.types.ts")),
+      expect: [],
+      label: "L3 does not trigger false positives when the return path is declared"
+    },
+    {
+      // Opt-in by construction: no correlationId anywhere in Core means nothing to return.
+      exec: () => checkEffectReturn(F("no-correlation.core.ts"), read("no-correlation.core.ts"),
+        F("bad-effect-return.types.ts"), read("bad-effect-return.types.ts")),
+      expect: [],
+      label: "L3 stays silent on a feature that never adopts correlationId"
     },
     {
       exec: () => checkCrossFeatureImport(F("bad-cross-import.ts"), read("bad-cross-import.ts"), "alpha"),
@@ -1217,22 +1516,54 @@ const NOT_GUARANTEED = [
   ["Type integrity (props / contracts)", "run `tsc --noEmit` separately"],
   ["Judgement kept out of shell.tsx", "not checked (L10 covers components, not shells)"],
   ["Widget-local state in shared/ui staying non-domain", "not checked — by design, see L10's scope"],
-  ["Effect results travelling back into Core", "not checked"],
+  ["Effect results actually reaching Core at runtime", "partially checked — the Action receptacle is required (L3); the wiring is not traced"],
+  ["Concurrent dispatch during an in-flight Effect", "not checked — starter's drain starts from the state at entry"],
+  ["Write-path round trip in features that never adopt correlationId", "not checked — the check fires only on partial adoption"],
   ["Build order when delegating to parallel agents", "not checked — a procedure, not a property of the tree"],
   ["Presentation consistency", "info only (L8), never blocks"],
   ["Semantic correctness", "never checked"],
 ];
 
+// A check that matched 0 files enforced nothing, so its promise must never be printed as a
+// guarantee — that would be the trust boundary itself lying. It is listed separately with its
+// roots instead, because "this law found no problems" and "this law was never pointed at your
+// code" look identical from the outside and only one of them is worth trusting.
+// Deliberately NOT fatal: a project legitimately may have no app router, no shared/ui, or no
+// components yet, and turning every such gap into INCONCLUSIVE would make the honest state
+// unreachable. Saying so out loud is the fix; refusing to run is not.
 function printTrustBoundary(report) {
+  const promised = report.filter((x) => x.promise && x.severity === "err");
+  const verified = promised.filter((x) => x.scanned > 0);
+  const unverified = promised.filter((x) => x.scanned === 0);
+
   console.log("  Guaranteed by this green:");
-  for (const r of report.filter((x) => x.promise && x.severity === "err")) {
+  if (verified.length === 0) console.log("    (none — no err-severity check matched a single file)");
+  for (const r of verified) {
     console.log(`    ${r.law.padEnd(3)} ${r.promise}  (${r.scanned} files)`);
   }
+
+  if (unverified.length > 0) {
+    console.log("\n  NOT verified in this project (0 files matched — the law was not enforced here):");
+    for (const r of unverified) {
+      console.log(`    ${r.law.padEnd(3)} ${r.promise}`);
+      console.log(`        ${r.name} matched 0 files under ${r.roots.join(", ")}`);
+    }
+    console.log("    If this project does have such code, the check is pointed at the wrong place:");
+    console.log("    fix its root/match in CHECKS (docs_HUMAN-ONLY/setup.md step 5).");
+  }
+
   const w = Math.max(...NOT_GUARANTEED.map(([k]) => k.length));
   console.log("\n  NOT guaranteed by this green:");
   for (const [what, how] of NOT_GUARANTEED) {
     console.log(`    - ${what.padEnd(w)}  → ${how}`);
   }
+}
+
+// 保守モード: 表を書き出して終了する。検査は一切しない（緑を名乗らない）。
+if (WRITE_DOCS) {
+  const r = writeChecksTable();
+  console.log(r.message);
+  process.exit(r.ok ? 0 : 1);
 }
 
 console.log(`\n[Spacta verify] target = ${projectRoot}\n`);
@@ -1251,15 +1582,29 @@ console.log("✓ L6 self-test: Verifier correctly rejects planted violations and
 // L6 の続き: チェッカが動くことは示せた。次に、それが何かに向けられていることを示す。
 const wiringDead = runWiringTest();
 if (wiringDead === null) {
-  console.log(`⊘ L6 wiring test: SKIPPED — no reference corpus at ${CORPUS}.`);
-  console.log("   Registry globs are unverified in this copy of the verifier.\n");
+  // v0.9.1 が空スキャンに出した処方箋をここにも適用する。SKIPPED のまま緑まで走れるなら、
+  // starter/ を消すだけで配線テストを黙って外せてしまう＝穴を隠す操作が可能になる。
+  console.error("verify: INCONCLUSIVE — no reference corpus for the L6 wiring test.\n");
+  console.error(`  Expected a reference corpus at ${CORPUS}`);
+  console.error("  Without it the CHECKS registry globs are unverified: a glob that selects 0 files");
+  console.error("  reports 0 violations and is indistinguishable from a law that passed.");
+  console.error("  Restore starter/ next to verify/ (it ships with the verifier), or point this copy");
+  console.error("  of the verifier at one. This run is not green and not red — it is unverified.\n");
+  emitJson({
+    selfTest: { ok: true, failures: [], wiring: "missing" },
+    status: "inconclusive",
+  });
+  process.exit(2);
 } else if (wiringDead.length > 0) {
   console.error("✗ L6 wiring test failed: these checks select 0 files in the reference corpus:");
   for (const r of wiringDead) {
     console.error(`   ${r.law.padEnd(3)} ${r.name} — root/match selects nothing under ${CORPUS}`);
   }
   console.error("\nA check that selects no files reports no violations, which is indistinguishable");
-  console.error("from a check that passed. Fix its root/match in CHECKS, or extend the corpus.\n");
+  console.error("from a check that passed. Fix its root/match in CHECKS, or extend the corpus.");
+  console.error("If you customised the Form on purpose (docs_HUMAN-ONLY/setup.md step 5), the fix is");
+  console.error("not only the glob: the reference corpus starter/ must be updated to the new Form too,");
+  console.error("because this test measures the globs against starter/, never against your tree.\n");
   emitJson({
     selfTest: {
       ok: false,
@@ -1272,8 +1617,15 @@ if (wiringDead === null) {
   console.log(`✓ L6 wiring test: all ${CHECKS.length} registry globs select files in the reference corpus.\n`);
 }
 
+// README のチェック表は CHECKS からの生成物。ずれていたら err（＝正本を2つに戻させない）。
+const docsDrift = checkChecksTableDrift();
+if (docsDrift.violations.length === 0 && !docsDrift.note) {
+  console.log("✓ docs: the check table in verify/README.md matches the CHECKS registry.\n");
+}
+
 const scan = runMainScan();
 const viols = scan.violations;
+viols.push(...docsDrift.violations);
 printScanReport(scan.report);
 
 // L6 proves the verifier is not broken. This proves the verifier actually looked at something.
@@ -1285,7 +1637,7 @@ if (scan.scannedTotal === 0) {
   console.error("  Expected src/features/, src/shared/, src/**/core.ts or app/**/page.tsx.");
   console.error("  Is the target path correct?\n");
   emitJson({
-    selfTest: { ok: true, failures: [], wiring: wiringDead === null ? "skipped" : "ok" },
+    selfTest: { ok: true, failures: [], wiring: "ok" },
     status: "inconclusive",
     scan: { total: 0, checks: scan.report },
   });
@@ -1296,6 +1648,7 @@ const errors = viols.filter((v) => !v.warn && !v.info);
 const warns = viols.filter((v) => v.warn);
 const infoViols = viols.filter((v) => v.info);
 const notes = runInfoChecks();
+if (docsDrift.note) notes.push(docsDrift.note);
 
 let failed = false;
 
@@ -1363,7 +1716,7 @@ if (RUN_TSC) {
 }
 
 emitJson({
-  selfTest: { ok: true, failures: [], wiring: wiringDead === null ? "skipped" : "ok" },
+  selfTest: { ok: true, failures: [], wiring: "ok" },
   status: failed ? "red" : "green",
   scan: { total: scan.scannedTotal, checks: scan.report },
   errors, warns, infos: infoViols, notes,

@@ -13,27 +13,43 @@ grep -rn "Date.now\|Math.random\|fetch(" src/features/*/core.ts   # ← Misses `
 
 This failed to detect `new Date()` calls and produced a **false green**. The `iotawise` codebase contained six instances of `new Date()` inside its Core layer, yet the grep-based benchmark reported "Purity OK".
 
-`verify.mjs` traverses the TypeScript AST (Abstract Syntax Tree) to inspect the structure of the code. This achieves a **strong-prevention** guarantee in the architectural reliability hierarchy (strong-prevention > weak-prevention > detection > hope).
+`verify.mjs` traverses the TypeScript AST (Abstract Syntax Tree) to inspect the structure of the code, so an individual check decides on syntax instead of on text — `new Date()` cannot hide from it the way it hid from the grep. That is a property of each check, not a claim about the tool: this is **syntactic boundary linting**, the bottom rung of the assurance ladder (boundary linting → static analysis → property-based testing → model checking → formal proof), and a check pointed at the wrong directory still enforces nothing at all. Read the trust boundary printed at the end of every run, not this paragraph, for what a given green actually covered.
 
 ## Checks Performed (Corresponding to `SPACTA.md` §1)
 
-| Law / Rule | Target | Detection (Diagnostic Name) |
-|---|---|---|
-| L1 | `src/features/**` | Imports from other features (**Isolation** violation). |
-| L2 | `src/**/core.ts` | Async, await, new Date, Date.now, Math.random, fetch, window, document, localStorage, sessionStorage, or imports of `prisma`/`*-gateway`/`react`/`next` (**Purity** violation). |
-| L4 | `src/**` (`.ts`/`.tsx`, whole tree) | Handwritten `switch` on `effect.type` without `assertNever` / `: never` termination (**Exhaustiveness** violation). Scope is deliberately not limited to `shell.tsx`: a shell-only walk left features with no `shell.tsx` completely unchecked and never scanned `shared/runEffect.ts` — the one switch that most needs an exhaustive terminator. No false positives result, since the checker returns early for any file without a `switch` on `effect.type`. |
-| L5 | `app/**/page.tsx`, `app/**/route.ts` | Direct non-deterministic generation (`new Date`/`Date.now`/`Math.random`/`crypto.randomUUID` = err) / direct aggregation (`.reduce()` = warn) at server boundaries (**Source Purity** violation). Both pages and routes undergo the same AST inspection. |
-| L7 | `src/shared/**` | `shared/*` importing from `features/*` (**Reverse Dependency Prevention** violation). |
-| L9 | `src/features/*/components/**/*.tsx`, `src/shared/ui/**/*.tsx` | Async functions, `await`, `new Date()`, `Date.now`, `Math.random`, `crypto.randomUUID`/`getRandomValues`, `fetch`/`XMLHttpRequest`/`localStorage`/`sessionStorage`, or imports of `prisma`/`*-gateway`/`next/navigation` (**Presentation Behaviour** violation). `react` and `next/link` are legitimate presentation vocabulary and are never flagged; `window`/`document` are deliberately absent from the forbidden set so shared/ui can wire DOM events (Dialog/Tabs/Combobox), since that never moves data across the membrane. |
-| L10 | `src/features/*/components/**/*.tsx` | `useState`/`useReducer`/`useEffect`/`useLayoutEffect` calls (**Component Statelessness** violation) — feature components must be pure functions of their props. Scoped to feature components only: `shared/ui` is deliberately out of scope, because widget-local state (disclosure, focus trap, popover position) is not domain state and never crosses the membrane. |
-| L6 | `verify/fixtures/`, `starter/` | **Verifier self-verification**, in two parts: (1) self-test — proves each checker function rejects planted violations and does not false-positive; (2) wiring test — proves every `CHECKS` registry glob actually selects at least one file in the reference corpus (`starter/`), since the self-test feeds fixture text directly into the checker functions and never exercises a check's `root`/`match`. |
-| L8 | `src/features/**/shell.tsx`, `src/features/**/components/**/*.tsx` | Direct use of raw colors (`#hex`), arbitrary values (`bg-[...]`), non-semantic grayscale palettes, or hidden hardcoded color/opacity (**Presentation Purity** violation, info/burn-in only). |
-| clone | `src/features/**/shell.tsx`, `src/features/**/components/**/*.tsx` | UI duplication based on JSX structure and Jaccard similarity of classNames (**UI Duplication** info/burn-in). |
-| info | `src/**/types.ts`, `tsconfig.json` | types.ts line budget check (shared = 250, feature = 200) / tsconfig app inclusion. |
-| dead-export | `src/features/**/types.ts` exports | Exported contracts that are not imported anywhere in `src/` or `app/` (**Dead Export** info). |
-| single-owner-export | `src/features/**/types.ts` exports | Local contracts imported by only one file, excluding Action/Effect/State/InitData (**Single Owner Export** info). |
+The table below is **generated from the `CHECKS` registry** in `verify.mjs` — it is not a hand-written copy. Regenerate it with `node verify/verify.mjs --write-docs` (use `bun` if node is unavailable). A normal verify run reports a `docs-drift` **err** when the block and the registry disagree, so a drifted table cannot be committed and still go green. Edit `CHECKS`, never the table.
 
-The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. Self-test alone is not sufficient: it feeds fixture text straight into the checker functions, so it never exercises a `CHECKS` entry's `root`/`match` — a mistyped glob that selects zero files would still pass the self-test and then report green on a real scan. The wiring test closes that gap by asserting each registry glob selects more than zero files (`> 0`, deliberately not a tuned threshold) in the reference corpus (`starter/`, shipped next to the verifier); if that corpus is absent, it prints `SKIPPED` and says the globs are unverified, rather than silently passing. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
+<!-- checks:begin -->
+<!-- Generated from the CHECKS registry in verify.mjs by `node verify/verify.mjs --write-docs`.
+     Do not edit by hand: a normal verify run reports an err when this block and CHECKS disagree. -->
+
+| Law | Check | Severity | Walks | Matches | Guarantee on green | Kind |
+|---|---|---|---|---|---|---|
+| L1 | `cross-feature-imports` | err | `src/features/` | `/\.(ts\|tsx)$/` | No feature imports another feature's internals | per file |
+| L2 | `core-purity` | err | `src/` | `/(^\|\/)core\.ts$/` | core.ts holds no IO and no non-determinism | per file |
+| L3 | `effect-return` | err | `src/features/` | `/(^\|\/)core\.ts$/` | An Effect that asks for an answer has an Action able to receive it | batch |
+| L4 | `effect-runtime` | err | `src/` | `/\.(ts\|tsx)$/` | Every handwritten switch on effect.type terminates exhaustively | per file |
+| L5 | `source-purity` | err | `app/`, `src/app/` | `/(^\|\/)(page\|route)\.tsx?$/` | Server boundaries generate no ids, time or randomness | per file |
+| L7 | `shared-features-isolation` | err | `src/shared/` | `/\.(ts\|tsx)$/` | shared/ does not import feature internals | per file |
+| L9 | `presentation-behaviour` | err | `src/` | `/\/features\/[^/]+\/components\/.*\.tsx$/` or `/\/shared\/ui\/.*\.tsx$/` | Components and shared/ui perform no IO and no non-determinism | per file |
+| L10 | `component-statelessness` | err | `src/features/` | `/\/components\/.*\.tsx$/` | Feature components are pure functions of their props | per file |
+| L8 | `presentation-purity` | info | `src/features/` | `/(^\|\/)shell\.tsx$/` or `/\/components\/.*\.tsx$/` | — | per file |
+| — | `clone` | info | `src/features/` | `/(^\|\/)shell\.tsx$/` or `/\/components\/.*\.tsx$/` | — | batch |
+| — | `export-ownership` | info | `src/features/` | `/(^\|\/)types\.ts$/` | — | batch |
+<!-- checks:end -->
+
+Rows are the machine-readable scope. What follows is the part a table cannot carry — why each scope is drawn where it is:
+
+- **L2 / L9 forbidden sets are not the same set.** Core rejects `async`/`await`/`new Date`/`Date.now`/`Math.random`/`fetch`/`window`/`document`/`localStorage`/`sessionStorage` and imports of `prisma`/`*-gateway`/`react`/`next`. Presentation rejects IO and non-determinism (`fetch`/`XMLHttpRequest`/storage, time, random, `crypto.randomUUID`) plus `next/navigation`, but `react` and `next/link` are legitimate presentation vocabulary and are never flagged; `window`/`document` are deliberately absent so `shared/ui` can wire DOM events (Dialog/Tabs/Combobox), which never moves data across the membrane.
+- **L3 is scoped by construction site, not by declaration.** `Effect` is a single global union in `shared/types.ts` (L7 forces that), so "this feature's Effect" does not exist at the type level; a `core.ts` does, and it belongs to exactly one feature. If a `core.ts` builds an object literal carrying both `type` and `correlationId`, the feature's `types.ts` must declare an `Action` able to receive that answer — a member carrying a `correlationId` that is not itself the action requesting the write. The check is opt-in by construction: a feature that never uses `correlationId` is never examined.
+- **L4's scope is the whole `src/` tree, not `shell.tsx`.** A shell-only walk left features with no `shell.tsx` completely unchecked and never scanned `shared/runEffect.ts` — the one switch that most needs an exhaustive terminator. No false positives result: the checker returns early for any file without a `switch` on `effect.type`.
+- **L5 walks both app router locations** (`app/` and `src/app/`), because Next.js accepts either. Non-deterministic generation is an `err`; direct `.reduce()` aggregation is a `warn`. Pages and routes get the same AST inspection.
+- **L10 is scoped to feature components only.** `shared/ui` is deliberately out of scope: widget-local state (disclosure, focus trap, popover position) is not domain state and never crosses the membrane.
+- **`export-ownership` produces two diagnostics.** `dead-export` = an exported contract imported nowhere in `src/` or the app router (dead contract, wasted sharing budget); `single-owner-export` = a contract imported by exactly one file, excluding the `Action`/`Effect`/`State`/`InitData` membrane vocabulary. Consumers are the full `src/` tree plus the app router, because pages and routes import feature types.
+- **Not in the registry** (they walk no per-check glob): the L6 self-test and wiring test; the `types.ts` line budget (shared = 250, feature = 200) and `tsconfig` app inclusion, both info notes; and the `docs-drift` err above.
+- **A check that matched 0 files is never listed as guaranteed.** The trust boundary prints such checks under `NOT verified in this project` with the roots it walked, because "this law found no problems" and "this law was never pointed at your code" are otherwise indistinguishable. That is reported, not fatal: a project may legitimately have no app router or no `shared/ui` yet.
+
+The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. Self-test alone is not sufficient: it feeds fixture text straight into the checker functions, so it never exercises a `CHECKS` entry's `root`/`match` — a mistyped glob that selects zero files would still pass the self-test and then report green on a real scan. The wiring test closes that gap by asserting each registry glob selects more than zero files (`> 0`, deliberately not a tuned threshold) in the reference corpus (`starter/`, shipped next to the verifier); if that corpus is absent the run exits `2` (INCONCLUSIVE) instead of continuing, because a `SKIPPED` line that still allows a green would let anyone delete the wiring test by deleting a directory. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
 
 ### L8 Color Token Evaluation (Details on Presentation Purity)
 
@@ -64,6 +80,10 @@ node verify/verify.mjs <projectRoot>
 node verify.mjs                       # Targets ../../project by default
 node verify.mjs <projectRoot> --tsc   # Also runs tsc --noEmit at the end
 node verify.mjs <projectRoot> --json  # Outputs machine-readable JSON (consumed by garden)
+
+# Maintenance mode: regenerate the check table in verify/README.md from the CHECKS registry.
+# Runs no checks and reports no result — it only writes the table.
+node verify/verify.mjs --write-docs
 ```
 
 Add this to `package.json` to make it a CI gate (`SPACTA.md` §3.4). This is what this repository's own `package.json` actually uses:
@@ -77,7 +97,9 @@ Add this to `package.json` to make it a CI gate (`SPACTA.md` §3.4). This is wha
 Exit codes:
 - `0` = Green — no `err` violations (warn/info findings alone still exit `0`).
 - `1` = Red — `err` violations found, or the L6 self-test / wiring test itself failed.
-- `2` = INCONCLUSIVE — 0 files were scanned. The verifier refuses to call an empty scan green, because "found no violations" and "looked at nothing" are otherwise indistinguishable.
+- `2` = INCONCLUSIVE — the run cannot claim to have verified anything, either because 0 files were scanned, or because the L6 wiring test found no reference corpus (`starter/`) and the registry globs are therefore unverified. The verifier refuses to call either state green, because "found no violations" and "looked at nothing" are otherwise indistinguishable.
+
+Note that a *single* check matching 0 files is not INCONCLUSIVE — the run can still be green, because a project may legitimately have no app router or no `shared/ui`. Such a check is instead moved out of `Guaranteed by this green` and printed under `NOT verified in this project`, with the roots it walked, so the green never claims a law it did not enforce.
 
 > typescript is resolved from the target project's `node_modules`. Placing it directly under the project root requires zero additional dependencies.
 > **`verify` (without `--tsc`) is not type checking.** L1–L10 inspect structural boundaries. Unused imports or broken references left after moving files will be green in verify and only red in `tsc`. Always run `node verify.mjs <projectRoot> --tsc` (or `npm run verify:tsc` / `tsc --noEmit`). **Green verify ≠ Green types** (`SPACTA.md` §3).
@@ -98,6 +120,7 @@ The fix was to change to AST-based evaluation (inspecting for `NeverKeyword` nod
 - **L1 relative import evaluation is robust**. It resolves paths using `path.resolve`, ensuring accurate cross-feature boundaries regardless of import depth or path structure.
 - **L8 is a heuristic based on color sets**. It flags grayscales and color+opacity, while allowing status colors and semantic tokens. It is not perfect and can miss new Tailwind aliases, acting purely as an **info/burn-in**. True UI alignment (fonts, rounded corners, overall feel) lies outside color tokens, handled by the `frontend-design` skill / human reviews.
 - **Clone detection is a heuristic (Jaccard similarity ≥ 0.9, token count ≥ 5)**. It compares the set of "child tag names + className tokens" for root JSX elements. Since it compares classNames as sets, **it is unaffected by Tailwind class ordering**. Child JSX returned by `.map()` is excluded from parent comparison to avoid false nesting duplicates. It merely flags **suspected** duplications as info. Deciding whether to dry up duplication is left to the gardener/human.
+- **L3 `effect-return` checks the receptacle, not the round trip**. It proves the feature *declares* an Action able to receive an Effect's answer; it does not trace that the Shell actually dispatches it, nor that Core does anything useful with it. It is also opt-in by construction: a feature that never puts a `correlationId` on an Effect is never examined, so a project that never adopts the pattern stays green with zero write-path guarantees. Both facts are printed in the trust boundary. Deliberate false negatives, chosen because a false positive here is worse: if the `Action` union cannot be found next to `core.ts`, or a union member resolves to a type the checker cannot read, it reports nothing.
 - **Does not check semantic intent**. Green `verify` does not guarantee the app behaves correctly. It only ensures borders aren't broken and the structure is clean (`SPACTA.md` §4.5).
 - Designed as a custom AST script to avoid dependencies on ESLint flat config (which broke due to circular references in the benchmark project). In production, you can replace this with dependency-cruiser, etc. (`SPACTA.md` §2).
 
@@ -109,6 +132,12 @@ verify/
   fixtures/
     bad-core.core.ts         L2: Contains new Date/await/prisma/fetch (should be rejected)
     good.core.ts             L2: Clean injected core (should not be false-positived)
+    bad-effect-return.core.ts   L3: Core builds an Effect carrying a correlationId (used by all three L3 cases)
+    bad-effect-return.types.ts  L3: Action union whose only correlationId member is the one requesting the write
+                                    = partial adoption, no return path (the pair above must be rejected)
+    good-effect-return.types.ts L3: Same Action plus EFFECT_SUCCEEDED/EFFECT_FAILED (should not be false-positived)
+    no-correlation.core.ts      L3: Core that never uses correlationId; paired with the bad types it must stay
+                                    silent — the executable record that this check is opt-in by construction
     bad-cross-import.ts      L1: Imports adjacent feature (should be rejected)
     bad-shell-switch.shell.tsx  L4: Handwritten switch without exhaustiveness termination (should be rejected)
     bad-shared-import.shared.ts L7: Shared importing a feature (should be rejected)
@@ -130,5 +159,6 @@ verify/
     single-owner-export.consumer.ts
     shared-export.types.ts      dead/single-owner: Export imported by two files (should not be false-positived)
     shared-export.consumer-a.ts / -b.ts  Two consumers of above
-  README.md                  This file
+  README.md                  This file. Its check table is generated from CHECKS
+                             (node verify/verify.mjs --write-docs); a drifted table is an err
 ```

@@ -9,18 +9,47 @@
 import { InitData, State, Action, Effect } from "./types";
 
 export function init(data: InitData): State {
-  return { count: data.initialCount, lastTouched: data.now };
+  return { count: data.initialCount, lastTouched: data.now, pending: [], notice: null };
 }
 
 export function update(state: State, action: Action): [State, Effect[]] {
   switch (action.type) {
     case "INCREMENT": {
-      const next: State = { count: state.count + 1, lastTouched: action.now };
-      return [next, [{ type: "SAVE", key: "count", value: String(next.count) }]];
+      // Optimistic: apply the change now, record the write as in flight, and let the answer
+      // either confirm it (EFFECT_SUCCEEDED) or undo it (EFFECT_FAILED).
+      const next: State = {
+        ...state,
+        count: state.count + 1,
+        lastTouched: action.now,
+        pending: [...state.pending, action.correlationId],
+      };
+      return [
+        next,
+        [{ type: "SAVE", correlationId: action.correlationId, key: "count", value: String(next.count) }],
+      ];
     }
     case "RESET": {
-      const next: State = { count: 0, lastTouched: action.now };
+      const next: State = { ...state, count: 0, lastTouched: action.now };
       return [next, [{ type: "LOG", message: "reset" }]];
+    }
+    case "EFFECT_SUCCEEDED": {
+      // The server's answer arrives as data. Anything it assigned (here, action.id) is injected,
+      // never generated in Core (L3) — this is where an optimistic placeholder id is replaced.
+      const next: State = { ...state, pending: state.pending.filter((c) => c !== action.correlationId) };
+      return [next, []];
+    }
+    case "EFFECT_FAILED": {
+      // Compensation. Only a write we actually recorded can be undone, so guard on pending
+      // rather than assuming; a late or duplicate answer must not move count twice.
+      if (!state.pending.includes(action.correlationId)) return [state, []];
+      const next: State = {
+        ...state,
+        count: state.count - 1,
+        pending: state.pending.filter((c) => c !== action.correlationId),
+        notice: action.message,
+      };
+      // Because the failure lives in state, the broken run replays from (state, action) alone.
+      return [next, []];
     }
     default: {
       // Exhaustiveness guard: TypeScript will error here if you add new Action types.

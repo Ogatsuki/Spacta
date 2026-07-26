@@ -44,7 +44,7 @@ cp -r Spacta/verify     myapp/verify
 cd myapp && npm install        # typescript, tailwindcss, and tailwind-variants are pre-configured.
 
 # 3) Run the verifier (runs with zero dependencies for Spacta laws)
-npm run verify                 # Runs L1–L8 checks, including the L6 self-test.
+npm run verify                 # Runs L1–L10 checks, including the L6 self-test.
 npm run verify:tsc             # Finally, verify TypeScript types via tsc --noEmit.
 ```
 
