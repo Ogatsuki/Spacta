@@ -7,14 +7,17 @@
  *   `new Date()` を**見逃して緑を出した**（ニセの緑）。本スクリプトは TypeScript の
  *   AST を歩いて構文として検出する＝prevent-strong。
  *
- * チェック（SPACTA.md §1 の Law に対応）:
+ * チェック（SPACTA.md §1 の Law に対応。走査対象の正本は下部の CHECKS レジストリ）:
  *   L1 cross-feature-imports : feature が他 feature の内部を import していないか
- *   L2 core-purity           : <feature>/core.ts に IO(async/await/new Date/Date.now/Math.random/fetch/prisma/window…) が無いか
- *   L4 effect-runtime        : shell の effect.type switch に assertNever/:never 終端があるか
+ *   L2 core-purity           : src 配下すべての core.ts に IO(async/await/new Date/Date.now/Math.random/fetch/prisma/window…) が無いか
+ *   L4 effect-runtime        : effect.type の switch に assertNever/:never 終端があるか（src 配下すべて。shared/runEffect.ts を含む）
  *   L5 source-purity         : app server 境界(page.tsx/route.ts) が非決定性(時刻/乱数/id)を直書き生成していないか（集計は warn）
- *   L7 shared-reverse-dep     : shared/* が features/* の内部を import していないか（逆依存）
- *   L6 self-test             : fixtures/ の「わざと壊した検体」を上記チェッカが必ず弾くか
- *                              ＝検証器自身を検証する。これが無いと L1–L5 はメタレベルで hope に戻る。
+ *   L7 shared-reverse-dep    : shared 配下が features の内部を import していないか（逆依存）
+ *   L9 presentation-behaviour: features/<name>/components/ と shared/ui/ に IO・非決定性が無いか（next/link は許容、next/navigation は不可）
+ *   L10 component-statelessness: features/<name>/components/ が props の純関数か（useState/useReducer/useEffect/useLayoutEffect 不可。shared/ui は対象外）
+ *   L6 self-test             : (1) fixtures/ の「わざと壊した検体」を上記チェッカが必ず弾くか
+ *                              (2) CHECKS レジストリの glob が参照コーパス(starter/)で 1 件以上選べているか
+ *                              ＝検証器自身を検証する。これが無いと他の掟はメタレベルで hope に戻る。
  *   L8 presentation-purity   : shell/components に生色(#hex)/arbitrary値/無彩色パレット/色名＋透過度を直書きしていないか（info・burn-in。ステータス色とセマンティックトークンは許容）
  *   clone (B3)               : feature の shell/components 間で UI(JSX/className) が重複していないか（info・burn-in）
  *   おまけ: dead-export / single-owner-export / types.ts 行数（共有予算）/ tsconfig が app/ を include しているか
@@ -22,8 +25,12 @@
  * 使い方:
  *   node verify.mjs <projectRoot>        # 既定: このスクリプトから見た ../../project
  *   node verify.mjs <projectRoot> --tsc  # 最後に tsc --noEmit も走らせる
+ *   node verify.mjs <projectRoot> --json # 機械可読 JSON（garden が消費）
  *
- * 終了コード: L1/L2/L4/L6 のいずれかに違反があれば 1。warn のみなら 0。
+ * 終了コード:
+ *   0 = Green（err 違反なし。warn/info のみなら 0）
+ *   1 = Red（err 違反あり、または L6 自己テスト/配線テストの失敗）
+ *   2 = INCONCLUSIVE（1 ファイルも走査していない。「違反が無かった」と区別するため緑を名乗らない）
  */
 
 import { createRequire } from "node:module";
@@ -918,6 +925,28 @@ function runInfoChecks() {
 }
 
 // ───────────────────────── L6 self-test (Verifier Self-Verification) ─────────────────────────
+// 走査対象の「配線」を検証する参照コーパス。検証器と同梱の starter を使う。
+const CORPUS = join(__dirname, "..", "starter");
+
+// L6 の第2部: レジストリの glob が実際にファイルを選べているかを証明する。
+//
+// runSelfTest が検証するのはチェッカ**関数**である。fixture のテキストを関数に直接渡すため、
+// CHECKS の root / match（= どのファイルを渡すか）を一切通らない。したがって glob を書き
+// 間違えて 0 ファイルしか選ばなくても、自己テストは緑のまま通り、違反 0 件なので本スキャンも
+// 緑になる。これは「空スキャン Green」の一段下の再発である —— 全体で 80 ファイル走査していても、
+// ある掟だけが 0 ファイルなら、その掟は存在しないのと同じで、しかも誰にも分からない。
+//
+// ここではチェッカを1つも実行しない。**ファイル選択だけ**が検査対象である。
+// 判定は `> 0` であり、調整された閾値ではない。主張は「この glob が何かに繋がっている」のみ。
+function runWiringTest() {
+  if (!existsSync(CORPUS)) return null; // 呼び出し側が skip を必ず申告する（黙って通すのが穴そのもの）
+  return CHECKS.map((c) => ({
+    law: c.law,
+    name: c.name,
+    scanned: walkFiles(c.root(CORPUS), (p) => c.match(p.replace(/\\/g, "/"))).length,
+  })).filter((r) => r.scanned === 0);
+}
+
 function runSelfTest() {
   const F = (name) => join(FIXTURES, name);
   const read = (name) => readFileSync(F(name), "utf8");
@@ -1219,6 +1248,30 @@ if (selfFail.length) {
 }
 console.log("✓ L6 self-test: Verifier correctly rejects planted violations and avoids false positives.\n");
 
+// L6 の続き: チェッカが動くことは示せた。次に、それが何かに向けられていることを示す。
+const wiringDead = runWiringTest();
+if (wiringDead === null) {
+  console.log(`⊘ L6 wiring test: SKIPPED — no reference corpus at ${CORPUS}.`);
+  console.log("   Registry globs are unverified in this copy of the verifier.\n");
+} else if (wiringDead.length > 0) {
+  console.error("✗ L6 wiring test failed: these checks select 0 files in the reference corpus:");
+  for (const r of wiringDead) {
+    console.error(`   ${r.law.padEnd(3)} ${r.name} — root/match selects nothing under ${CORPUS}`);
+  }
+  console.error("\nA check that selects no files reports no violations, which is indistinguishable");
+  console.error("from a check that passed. Fix its root/match in CHECKS, or extend the corpus.\n");
+  emitJson({
+    selfTest: {
+      ok: false,
+      failures: wiringDead.map((r) => `wiring: ${r.law} ${r.name} selects 0 files in ${CORPUS}`),
+    },
+    status: "red",
+  });
+  process.exit(1);
+} else {
+  console.log(`✓ L6 wiring test: all ${CHECKS.length} registry globs select files in the reference corpus.\n`);
+}
+
 const scan = runMainScan();
 const viols = scan.violations;
 printScanReport(scan.report);
@@ -1232,7 +1285,7 @@ if (scan.scannedTotal === 0) {
   console.error("  Expected src/features/, src/shared/, src/**/core.ts or app/**/page.tsx.");
   console.error("  Is the target path correct?\n");
   emitJson({
-    selfTest: { ok: true, failures: [] },
+    selfTest: { ok: true, failures: [], wiring: wiringDead === null ? "skipped" : "ok" },
     status: "inconclusive",
     scan: { total: 0, checks: scan.report },
   });
@@ -1310,7 +1363,7 @@ if (RUN_TSC) {
 }
 
 emitJson({
-  selfTest: { ok: true, failures: [] },
+  selfTest: { ok: true, failures: [], wiring: wiringDead === null ? "skipped" : "ok" },
   status: failed ? "red" : "green",
   scan: { total: scan.scannedTotal, checks: scan.report },
   errors, warns, infos: infoViols, notes,

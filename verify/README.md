@@ -20,18 +20,20 @@ This failed to detect `new Date()` calls and produced a **false green**. The `io
 | Law / Rule | Target | Detection (Diagnostic Name) |
 |---|---|---|
 | L1 | `src/features/**` | Imports from other features (**Isolation** violation). |
-| L2 | `**/core.ts` | Async, await, new Date, Date.now, Math.random, fetch, window, document, localStorage, or prisma usage (**Purity** violation). |
-| L4 | `**/shell.tsx` | Handwritten `switch` on `effect.type` without `assertNever` / `: never` termination (**Exhaustiveness** violation). |
+| L2 | `src/**/core.ts` | Async, await, new Date, Date.now, Math.random, fetch, window, document, localStorage, sessionStorage, or imports of `prisma`/`*-gateway`/`react`/`next` (**Purity** violation). |
+| L4 | `src/**` (`.ts`/`.tsx`, whole tree) | Handwritten `switch` on `effect.type` without `assertNever` / `: never` termination (**Exhaustiveness** violation). Scope is deliberately not limited to `shell.tsx`: a shell-only walk left features with no `shell.tsx` completely unchecked and never scanned `shared/runEffect.ts` — the one switch that most needs an exhaustive terminator. No false positives result, since the checker returns early for any file without a `switch` on `effect.type`. |
 | L5 | `app/**/page.tsx`, `app/**/route.ts` | Direct non-deterministic generation (`new Date`/`Date.now`/`Math.random`/`crypto.randomUUID` = err) / direct aggregation (`.reduce()` = warn) at server boundaries (**Source Purity** violation). Both pages and routes undergo the same AST inspection. |
 | L7 | `src/shared/**` | `shared/*` importing from `features/*` (**Reverse Dependency Prevention** violation). |
-| L6 | `verify/fixtures/` | **Verifier self-verification**. Enforces that known violations are rejected and correct files are not false-positived. |
-| L8 | `features/**/shell.tsx`, `features/**/components/**` | Direct use of raw colors (`#hex`), arbitrary values (`bg-[...]`), non-semantic grayscale palettes, or hidden hardcoded color/opacity (**Presentation Purity** violation, info/burn-in only). |
-| clone | `features/**/shell.tsx`, `features/**/components/**` | UI duplication based on JSX structure and Jaccard similarity of classNames (**UI Duplication** info/burn-in). |
-| info | `**/types.ts`, `tsconfig.json` | types.ts line budget check (shared = 250, feature = 200) / tsconfig app inclusion. |
-| dead-export | `features/**/types.ts` exports | Exported contracts that are not imported anywhere in `src/` or `app/` (**Dead Export** info). |
-| single-owner-export | `features/**/types.ts` exports | Local contracts imported by only one file, excluding Action/Effect/State/InitData (**Single Owner Export** info). |
+| L9 | `src/features/*/components/**/*.tsx`, `src/shared/ui/**/*.tsx` | Async functions, `await`, `new Date()`, `Date.now`, `Math.random`, `crypto.randomUUID`/`getRandomValues`, `fetch`/`XMLHttpRequest`/`localStorage`/`sessionStorage`, or imports of `prisma`/`*-gateway`/`next/navigation` (**Presentation Behaviour** violation). `react` and `next/link` are legitimate presentation vocabulary and are never flagged; `window`/`document` are deliberately absent from the forbidden set so shared/ui can wire DOM events (Dialog/Tabs/Combobox), since that never moves data across the membrane. |
+| L10 | `src/features/*/components/**/*.tsx` | `useState`/`useReducer`/`useEffect`/`useLayoutEffect` calls (**Component Statelessness** violation) — feature components must be pure functions of their props. Scoped to feature components only: `shared/ui` is deliberately out of scope, because widget-local state (disclosure, focus trap, popover position) is not domain state and never crosses the membrane. |
+| L6 | `verify/fixtures/`, `starter/` | **Verifier self-verification**, in two parts: (1) self-test — proves each checker function rejects planted violations and does not false-positive; (2) wiring test — proves every `CHECKS` registry glob actually selects at least one file in the reference corpus (`starter/`), since the self-test feeds fixture text directly into the checker functions and never exercises a check's `root`/`match`. |
+| L8 | `src/features/**/shell.tsx`, `src/features/**/components/**/*.tsx` | Direct use of raw colors (`#hex`), arbitrary values (`bg-[...]`), non-semantic grayscale palettes, or hidden hardcoded color/opacity (**Presentation Purity** violation, info/burn-in only). |
+| clone | `src/features/**/shell.tsx`, `src/features/**/components/**/*.tsx` | UI duplication based on JSX structure and Jaccard similarity of classNames (**UI Duplication** info/burn-in). |
+| info | `src/**/types.ts`, `tsconfig.json` | types.ts line budget check (shared = 250, feature = 200) / tsconfig app inclusion. |
+| dead-export | `src/features/**/types.ts` exports | Exported contracts that are not imported anywhere in `src/` or `app/` (**Dead Export** info). |
+| single-owner-export | `src/features/**/types.ts` exports | Local contracts imported by only one file, excluding Action/Effect/State/InitData (**Single Owner Export** info). |
 
-The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
+The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. Self-test alone is not sufficient: it feeds fixture text straight into the checker functions, so it never exercises a `CHECKS` entry's `root`/`match` — a mistyped glob that selects zero files would still pass the self-test and then report green on a real scan. The wiring test closes that gap by asserting each registry glob selects more than zero files (`> 0`, deliberately not a tuned threshold) in the reference corpus (`starter/`, shipped next to the verifier); if that corpus is absent, it prints `SKIPPED` and says the globs are unverified, rather than silently passing. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
 
 ### L8 Color Token Evaluation (Details on Presentation Purity)
 
@@ -64,14 +66,21 @@ node verify.mjs <projectRoot> --tsc   # Also runs tsc --noEmit at the end
 node verify.mjs <projectRoot> --json  # Outputs machine-readable JSON (consumed by garden)
 ```
 
-Add this to `package.json` to make it a CI gate (`SPACTA.md` §3.4):
+Add this to `package.json` to make it a CI gate (`SPACTA.md` §3.4). This is what this repository's own `package.json` actually uses:
 
 ```json
-{ "scripts": { "verify": "node verify/verify.mjs ." } }
+{ "scripts": { "verify": "node verify/verify.mjs starter" } }
 ```
 
+> Point `verify` at a directory that actually contains `src/` or `app/`. Pointing it at a directory with neither (for example this repo's own root, which holds `verify/` and `starter/` but no top-level `src/`) makes it walk zero files and exit `2` (INCONCLUSIVE) — this was previously documented here as `node verify/verify.mjs .` and was a real self-inflicted bug in this repo, since "0 files scanned" is not the same as "0 violations".
+
+Exit codes:
+- `0` = Green — no `err` violations (warn/info findings alone still exit `0`).
+- `1` = Red — `err` violations found, or the L6 self-test / wiring test itself failed.
+- `2` = INCONCLUSIVE — 0 files were scanned. The verifier refuses to call an empty scan green, because "found no violations" and "looked at nothing" are otherwise indistinguishable.
+
 > typescript is resolved from the target project's `node_modules`. Placing it directly under the project root requires zero additional dependencies.
-> **`verify` (without `--tsc`) is not type checking.** L1–L8 inspect structural boundaries. Unused imports or broken references left after moving files will be green in verify and only red in `tsc`. Always run `node verify.mjs <projectRoot> --tsc` (or `npm run verify:tsc` / `tsc --noEmit`). **Green verify ≠ Green types** (`SPACTA.md` §3).
+> **`verify` (without `--tsc`) is not type checking.** L1–L10 inspect structural boundaries. Unused imports or broken references left after moving files will be green in verify and only red in `tsc`. Always run `node verify.mjs <projectRoot> --tsc` (or `npm run verify:tsc` / `tsc --noEmit`). **Green verify ≠ Green types** (`SPACTA.md` §3).
 
 ## Real-world Example: How L6 Caught Its Own Bug During Development
 
@@ -108,6 +117,10 @@ verify/
     good-route.route.ts         L5: Injected, fetch/persistence-only route (should not be false-positived)
     bad-presentation.shell.tsx  L8: Raw color/arbitrary values/grayscales/color+opacity (should trigger info)
     good-presentation.shell.tsx L8: Semantic tokens/status colors (should not be false-positived)
+    bad-presentation-io.component.tsx  L9: async/await/fetch, new Date/Math.random/crypto.randomUUID, localStorage, and a next/navigation import in a feature component (should be rejected)
+    good-presentation-io.component.tsx L9: react type import + next/link only, time received as a prop (should not be false-positived)
+    bad-component-state.component.tsx  L10: useState/useEffect in a feature component (should be rejected)
+    good-shared-ui.ui.tsx      L9/L10: interactive shared/ui primitive using useState/useEffect and document.addEventListener; must stay green — the executable record that L10 scopes to feature components only, not shared/ui, and that L9 deliberately does not ban window/document
     clone-a.shell.tsx / clone-b.shell.tsx  clone: UI with only className order changed (should trigger info)
     clone-distinct.shell.tsx    clone: Different UI structure and classNames (should not be false-positived)
     clone-map-callback.shell.tsx clone: Parent ul + map-nested li (should not be false-positived)
