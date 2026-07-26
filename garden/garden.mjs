@@ -122,9 +122,9 @@ function isSuppressed(relFile, line) {
 // ───────────────────── 指示書の組み立て ─────────────────────
 const tasks = [];
 const suppressed = [];
-// Anything that is not an affirmative green blocks gardening — including the new
-// "inconclusive" status (verify walked 0 files). Fail safe: never garden a tree that
-// was never actually verified.
+// Anything that is not an affirmative green blocks gardening — including the
+// "inconclusive" status (verify walked 0 files, found no reference corpus, or walked a file
+// whose role it could not name). Fail safe: never garden a tree that was never actually verified.
 const verifyRed = result.status !== "green" || !result.selfTest?.ok;
 
 if (!verifyRed) {
@@ -164,7 +164,9 @@ const report = {
   blockedReason: !verifyRed
     ? null
     : result.status === "inconclusive"
-      ? "verify が 0 ファイルしか走査していない（INCONCLUSIVE）。検証されていない木を庭仕事してはならない。対象パスを確認せよ。"
+      ? "verify が INCONCLUSIVE（検証したと言えない状態）。原因は verify の出力に印字されている: " +
+        "0 ファイルしか走査していない / 参照コーパスが無い / 走査したファイルの役割を名指しできなかった（roles.unclassified）。" +
+        "検証されていない木を庭仕事してはならない。"
       : "verify が赤（法違反 or self-test 失敗）。庭仕事の前に npm run verify を緑にせよ。",
   instructions:
     "このファイルは Spacta 庭師（garden）のお掃除指示書。手順とガードレールは Spacta/garden/GARDENER.md を読むこと。" +

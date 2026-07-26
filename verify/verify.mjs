@@ -20,16 +20,18 @@
  *
  * 終了コード:
  *   0 = Green（err 違反なし。warn/info のみなら 0）
- *   1 = Red（err 違反あり、または L6 自己テスト/配線テストの失敗）
+ *   1 = Red（err 違反あり、または L6 自己テスト/配線テスト/役割主張テストの失敗）
  *   2 = INCONCLUSIVE（検証したと言えない状態。「違反が無かった」と区別するため緑を名乗らない）
  *       - 1 ファイルも走査していない
  *       - L6 配線テストの参照コーパス(starter/)が無く、レジストリの glob が未検証
+ *       - 走査したファイルの役割を名指しできなかった（何を検査すべきかが分からない）
  */
 
 import { createRequire } from "node:module";
 import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname, relative, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ROLES, APP_ROOTS as PLATFORM_APP_ROOTS, classifyPath, platform } from "./platform/nextjs.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const positional = process.argv.slice(2).find((a) => !a.startsWith("--"));
@@ -40,7 +42,14 @@ const jsonFlag = process.argv.find((a) => a === "--json" || a.startsWith("--json
 const JSON_OUT = jsonFlag ? (jsonFlag.startsWith("--json=") ? resolve(jsonFlag.slice("--json=".length)) : null) : undefined;
 // --write-docs : verify/README.md のチェック表を CHECKS から再生成する（保守モード。検査はしない）。
 const WRITE_DOCS = process.argv.includes("--write-docs");
+// --roles : 役割カバレッジを全文表示する。既定は1行の要約。
+// verify の読者は write-run-fix ループを回すエージェントであり、毎回読み直す出力に「変化しない
+// 参照表」を置くと、その分だけタスクから attention を奪う。全文が必要になる状況——未分類が出た /
+// 表と実装が食い違った——では、フラグ無しでも自動的に全部出す。
+const SHOW_ROLES = process.argv.includes("--roles");
 const FIXTURES = join(__dirname, "fixtures");
+// 名前→役割の表。未分類を申告する時、直す場所として名指しする（メッセージに書き写さない）。
+const PLATFORM_TABLE = join(__dirname, "platform", "nextjs.mjs");
 
 // Resolve `typescript` from the target project first (a project placing this script inside
 // itself would just `import 'typescript'`). Fall back to the verifier's own dependency so a
@@ -927,17 +936,22 @@ function featureNameOf(file) {
 // spacta-alpha-evaluation.md as "Loopholes in Law Scope" (a Law's name is broad, its scan is
 // narrow, and the gap silently stays "hope").
 //
-//   root     : (projectRoot) => directory to walk, or an array of directories when a
-//              convention has more than one legal home (Next.js allows app/ and src/app/).
+//   roles    : [role]        => scope stated as "the files of these roles". Preferred whenever
+//              it is exact: the registry then carries no framework file name at all, and a new
+//              convention reaches the law through verify/platform/*.mjs instead of through a
+//              regex here. `root`/`match` are not written when `roles` is.
+//   root     : (projectRoot) => directory to walk, or an array of directories.
 //   match    : (posix path)  => is this file in scope for this check?
 //   run      : (file, text)  => violations          [per-file checks]
 //   batch    : ([{file,text}]) => violations        [checks that are inherently cross-file]
 //   promise  : one line stating what a green run guarantees. null for info-level checks,
 //              which are deliberately excluded from the guarantee list.
-// Next.js accepts the app router in either location. Both are walked: a project that chose the
-// other one is not a project without server boundaries, and a check that walks the wrong
-// directory silently enforces nothing (see printTrustBoundary's "NOT verified" group).
-const APP_ROOTS = (r) => [join(r, "app"), join(r, "src", "app")];
+//
+// `roles` は「掟が役割を語る」ための入口である。ただし **綺麗に嵌る所にだけ** 使う:
+// L1/L7 の対象は「feature の木」「shared の木」というディレクトリの事実であって役割の集合では
+// ないし、L9/L10 の対象は役割 component の一部でしかない。無理に役割で言い換えると、対応表が
+// 「同期させ続けねばならない第二の正本」になり、レジストリから名前を追い出した利得をそのまま
+// 失う。どれを変換しどれを残したかは verify/README.md に書いてある。
 
 const CHECKS = [
   {
@@ -951,9 +965,13 @@ const CHECKS = [
     promise: "No feature imports another feature's internals",
   },
   {
+    // Role-driven. Narrower than the previous "any core.ts under src/": a core.ts sitting
+    // somewhere the Form does not put one now classifies as another role (or as nothing at
+    // all) instead of quietly borrowing L2. That narrowing is safe only because every walked
+    // file is now accounted for by the role pass — a file that loses a law becomes visible in
+    // the coverage block, or stops the run as unclassified. It could not be made silently.
     law: "L2", name: "core-purity", severity: "err",
-    root: (r) => join(r, "src"),
-    match: (q) => /(^|\/)core\.ts$/.test(q),
+    roles: ["core"],
     run: (f, text) => checkCorePurity(f, text),
     promise: "core.ts holds no IO and no non-determinism",
   },
@@ -963,8 +981,7 @@ const CHECKS = [
     // level — but a core.ts does, and it belongs to exactly one feature. Needs the sibling
     // types.ts as well, hence batch.
     law: "L3", name: "effect-return", severity: "err",
-    root: (r) => join(r, "src", "features"),
-    match: (q) => /(^|\/)core\.ts$/.test(q),
+    roles: ["core"],
     batch: (coreFiles) => coreFiles.flatMap(({ file, text }) => {
       const tf = join(dirname(file), "types.ts");
       const exists = existsSync(tf);
@@ -986,11 +1003,21 @@ const CHECKS = [
     promise: "Every handwritten switch on effect.type terminates exhaustively",
   },
   {
+    // The check that made the case for this whole model. Its scope used to be the literal
+    // strings `app/` and `/(page|route)\.tsx?$/`, so `src/app/` — a layout Next.js officially
+    // supports — walked zero files while the trust boundary still printed L5's promise, and
+    // `layout.tsx` was outside every err check even though a layout may legally `await` IO.
+    //
+    // Stated as roles the scope is one line and it moves with the platform table: `source` is
+    // whatever the framework currently calls a server boundary (page, route, default, sitemap,
+    // opengraph-image, …), `frame` is the chrome drawn around it (layout, template). Adding
+    // `frame` here is not a widening of L5 — the table already claimed L5 for that role; until
+    // now the claim was simply false. SPACTA.md still spells L5's scope as "(page.tsx /
+    // route.ts)"; that parenthetical is the last enumeration-by-name left in the Law text.
     law: "L5", name: "source-purity", severity: "err",
-    root: (r) => APP_ROOTS(r),
-    match: (q) => /(^|\/)(page|route)\.tsx?$/.test(q),
+    roles: ["source", "frame"],
     run: (f, text) => checkSourcePurity(f, text),
-    promise: "Server boundaries generate no ids, time or randomness",
+    promise: "Server boundaries and the frames around them generate no ids, time or randomness",
   },
   {
     law: "L7", name: "shared-features-isolation", severity: "err",
@@ -1028,20 +1055,20 @@ const CHECKS = [
     promise: null,
   },
   {
-    // Consumers are src/ + the app router in full; the app router must be included because
-    // routes and pages import feature types (walking src alone would mark those exports dead).
-    // Both app router locations are walked, and the list is de-duplicated because src/app/ is
-    // already inside the src/ walk.
+    // Not converted to `roles`: role `contract` also holds src/shared/types.ts, and the shared
+    // membrane vocabulary is not a feature's sharing budget. The scope stays "a feature's
+    // types.ts".
+    // The consumer set, though, is exactly "every file Spacta can name" — which is what the
+    // role pass already walked, so the app router no longer has to be spelled out here. Pages
+    // and routes must be included: they import feature types, and walking src/ alone would
+    // report those exports as dead.
     law: "—", name: "export-ownership", severity: "info",
     root: (r) => join(r, "src", "features"),
     match: (q) => /(^|\/)types\.ts$/.test(q),
     batch: (typeFiles) => {
       if (typeFiles.length === 0) return [];
       const srcRoot = join(projectRoot, "src");
-      const consumerFiles = [...new Set([
-        ...walkFiles(srcRoot, (p) => /\.(ts|tsx)$/.test(p)),
-        ...APP_ROOTS(projectRoot).flatMap((r) => walkFiles(r, (p) => /\.(ts|tsx)$/.test(p))),
-      ])];
+      const consumerFiles = classifiedFiles(projectRoot).map((c) => c.file);
       const out = [];
       for (const { file: tf, text } of typeFiles) {
         const consumers = consumerFiles
@@ -1056,13 +1083,43 @@ const CHECKS = [
   },
 ];
 
+// ───────────────────────── 役割による走査（platform 表の消費側）─────────────────────────
+// フレームワークの命名規約は verify/platform/*.mjs にしか書かれていない。ここが引くのは役割だけ。
+//
+// 走査範囲は src/ と app router の両位置。プロジェクト直下の設定ファイルは対象外にしている:
+// 「Spacta が管理するコード」の外周をどこに引くかは表ではなくこの walk の仕事で、外周を広げると
+// 未分類の申告が「知らないファイルがある」ではなく「知らない道具がある」で埋まる。
+const appRootDirs = (r) => PLATFORM_APP_ROOTS.map((a) => join(r, ...a.split("/")));
+
+const classifiedCache = new Map();
+function classifiedFiles(root) {
+  if (classifiedCache.has(root)) return classifiedCache.get(root);
+  const dirs = [join(root, "src"), ...appRootDirs(root)];
+  const files = [...new Set(dirs.flatMap((d) => walkFiles(d, (p) => /\.(ts|tsx)$/.test(p))))].sort();
+  const out = files.map((file) => {
+    const rel = relative(root, file).replace(/\\/g, "/");
+    return { file, rel, role: classifyPath(rel) };
+  });
+  classifiedCache.set(root, out);
+  return out;
+}
+
 // root は1本でも配列でもよい。呼び出し側が毎回 Array.isArray を書かなくて済むようここで正規化する。
 function rootsOf(c, r) {
+  if (c.roles) return [join(r, "src"), ...appRootDirs(r)];
   const v = c.root(r);
   return Array.isArray(v) ? v : [v];
 }
 
+// 印字用の「このチェックが見ている範囲」。役割で書かれたチェックはディレクトリではなく役割を名乗る
+// ——「app/ を歩いたが 0 件」より「役割 source のファイルが 0 件」の方が、次に何を直すかが分かる。
+function scopeOf(c, r) {
+  if (c.roles) return c.roles.map((x) => `role ${x}`).join(", ");
+  return rootsOf(c, r).map((p) => relative(r, p).replace(/\\/g, "/") || ".").join(", ");
+}
+
 function filesOf(c, r) {
+  if (c.roles) return classifiedFiles(r).filter((x) => c.roles.includes(x.role)).map((x) => x.file);
   const out = new Set();
   for (const root of rootsOf(c, r)) {
     for (const f of walkFiles(root, (p) => c.match(p.replace(/\\/g, "/")))) out.add(f);
@@ -1070,14 +1127,54 @@ function filesOf(c, r) {
   return [...out];
 }
 
+const lawOrder = (a, b) => (Number(a.slice(1)) || 99) - (Number(b.slice(1)) || 99);
+
+// 役割ごとのカバレッジ。ここが載せる「この役割を守っている掟」は **表の主張の写しではなく、
+// 本スキャンが実際に歩いたファイル集合からの導出**である。写しにした瞬間これは第二の正本になる。
+//
+// 掲載するのは「その役割の **全** ファイルを歩いた掟」だけ。一部にしか届いていない掟を
+// enforcing と呼ぶのは、この版が消しに来た嘘そのもの（L5 が app/ だけを見て「保証」と印字した）。
+// 表が主張しているのに全ファイルに届かなかった掟は shortfall として別に申告する。
+function roleCoverage(root, perCheck) {
+  const classified = classifiedFiles(root);
+  const lawsByFile = new Map(classified.map((c) => [c.file, new Set()]));
+  for (const { law, files } of perCheck) {
+    if (law === "—") continue; // info-only heuristics are not laws; they never appear as enforcement
+    for (const f of files) lawsByFile.get(f)?.add(law);
+  }
+
+  const roles = [];
+  for (const role of Object.keys(ROLES)) {
+    const files = classified.filter((c) => c.role === role);
+    if (files.length === 0) continue; // 0 files = nothing to say; not a hole
+    const count = new Map();
+    for (const f of files) for (const l of lawsByFile.get(f.file)) count.set(l, (count.get(l) ?? 0) + 1);
+    const laws = [...count].filter(([, n]) => n === files.length).map(([l]) => l).sort(lawOrder);
+    // 一つの役割が二か所に住んでいて片方にしか掟が届いていない状態（app/error.tsx と
+    // src/features/*/components/ が同じ component になる、等）。全ファイルに届いた掟が
+    // 一つも無い時だけ表に出す: そうしないと「掟ゼロ」と読めてしまい、これも一種の嘘になる。
+    const partial = [...count].filter(([, n]) => n < files.length)
+      .sort((a, b) => lawOrder(a[0], b[0])).map(([l, n]) => `${l}(${n}/${files.length})`);
+    const shortfall = (ROLES[role].laws ?? []).filter((l) => !laws.includes(l));
+    roles.push({
+      role, count: files.length, laws, partial, shortfall,
+      missedFiles: files.filter((f) => shortfall.some((l) => !lawsByFile.get(f.file).has(l))).map((f) => f.rel),
+      unchecked: ROLES[role].unchecked ?? null,
+    });
+  }
+  return { roles, unknown: classified.filter((c) => c.role === null).map((c) => c.rel), total: classified.length };
+}
+
 function runMainScan() {
   const violations = [];
   const report = [];
+  const perCheck = [];
   const seen = new Set(); // distinct files any check actually looked at
 
   for (const c of CHECKS) {
     const files = filesOf(c, projectRoot);
     for (const f of files) seen.add(f);
+    perCheck.push({ law: c.law, files });
 
     const found = c.batch
       ? c.batch(files.map((f) => ({ file: f, text: readFileSync(f, "utf8") })))
@@ -1086,12 +1183,12 @@ function runMainScan() {
     violations.push(...found);
     report.push({
       law: c.law, name: c.name, severity: c.severity, promise: c.promise,
-      roots: rootsOf(c, projectRoot).map((p) => relative(projectRoot, p).replace(/\\/g, "/") || "."),
+      scope: scopeOf(c, projectRoot),
       scanned: files.length, found: found.length,
     });
   }
 
-  return { violations, report, scannedTotal: seen.size };
+  return { violations, report, scannedTotal: seen.size, coverage: roleCoverage(projectRoot, perCheck) };
 }
 
 // Info checks (non-blocking): types.ts line budget / tsconfig include
@@ -1148,9 +1245,14 @@ function extractRegexLiterals(src) {
 function renderChecksTable() {
   const cell = (s) => String(s).replace(/\|/g, "\\|"); // GFM: code span の中でも | は要エスケープ
   const rows = CHECKS.map((c) => {
-    const roots = rootsOf(c, "").map((p) => `\`${cell(p.replace(/\\/g, "/"))}/\``).join(", ");
-    const patterns = extractRegexLiterals(c.match.toString());
-    const match = patterns.length ? patterns.map((p) => `\`${cell(p)}\``).join(" or ") : "—";
+    const roots = c.roles ? "(role pass)" : rootsOf(c, "").map((p) => `\`${cell(p.replace(/\\/g, "/"))}/\``).join(", ");
+    // A role-driven check has no `match` regex to show: its scope *is* the role name, and the
+    // names that resolve to it live in verify/platform/nextjs.mjs. Printing the roots it
+    // happens to walk would put the framework name back into the document.
+    const patterns = c.roles ? [] : extractRegexLiterals(c.match.toString());
+    const match = c.roles
+      ? c.roles.map((x) => `role \`${cell(x)}\``).join(" or ")
+      : patterns.length ? patterns.map((p) => `\`${cell(p)}\``).join(" or ") : "—";
     const kind = c.batch ? "batch" : "per file";
     return `| ${c.law} | \`${c.name}\` | ${c.severity} | ${roots} | ${match} | ${c.promise ? cell(c.promise) : "—"} | ${kind} |`;
   });
@@ -1219,8 +1321,81 @@ function runWiringTest() {
   return CHECKS.map((c) => ({
     law: c.law,
     name: c.name,
+    scope: scopeOf(c, CORPUS),
     scanned: filesOf(c, CORPUS).length,
   })).filter((r) => r.scanned === 0);
+}
+
+// L6 の第3部: 名前→役割の表そのものを参照コーパスに当てる。配線テストが「glob が何かに繋がって
+// いるか」を測るのに対し、こちらは「表の主張が本当か」を測る。
+//
+//   (a) コーパスの全ファイルが役割を引ける  = walk と分類器が実際に噛み合っている
+//   (b) 表が「この役割はこの掟が守る」と言うなら、その掟が実際に当該ファイルを歩いている
+//
+// (b) が無ければ ROLES.laws は印字されるだけの願いになる。v0.9.3 の frame/L5 がまさにそれで、
+// 表は L5 を主張し、L5 は layout.tsx を一度も開いていなかった。ユーザのツリーではなく starter/
+// に対して測る: 表と CHECKS の食い違いは検証器側の欠陥であって、利用者のコードの問題ではない。
+function runRoleClaimTest() {
+  if (!existsSync(CORPUS)) return null; // 呼び出し側が配線テストと同じく INCONCLUSIVE を申告する
+  const cov = roleCoverage(CORPUS, CHECKS.map((c) => ({ law: c.law, files: filesOf(c, CORPUS) })));
+  return {
+    unknown: cov.unknown,
+    overclaimed: cov.roles.filter((r) => r.shortfall.length)
+      .map((r) => ({ role: r.role, missing: r.shortfall, files: r.missedFiles })),
+    rolesSeen: cov.roles.map((r) => r.role),
+  };
+}
+
+// 分類器の自己テスト。入力がパス文字列なので、fixture は **パスそのもの** である
+// （空ファイルを fixtures/ に置くと、リテラルと実ファイルという2つの正本ができるだけ）。
+// 効いているのは2組: 既知の規約が期待どおりの役割を引くこと、そして **でっち上げた名前が
+// null を返すこと** ——後者が無いと、未分類の申告が「決して起きない機能」になりうる。
+const CLASSIFIER_CASES = [
+  ["app/page.tsx", "source", "the app router at app/"],
+  ["src/app/page.tsx", "source", "the same convention at src/app/ (the v0.9.3 hole)"],
+  ["app/api/things/route.ts", "source", "a nested route handler"],
+  ["app/layout.tsx", "frame", "a layout is a frame, not a page"],
+  ["src/app/(marketing)/layout.tsx", "frame", "route groups do not change the role"],
+  ["app/m/[id]/page.tsx", "source", "dynamic segments do not change the role"],
+  ["src/features/x/core.ts", "core", "Spacta owns this name"],
+  ["src/features/x/types.ts", "contract", "membrane vocabulary"],
+  ["src/features/x/shell.tsx", "shell", "client edge"],
+  ["src/features/x/components/Y.tsx", "component", "feature presentation"],
+  ["src/shared/ui/Button.tsx", "shared-ui", "presentation primitive"],
+  ["src/shared/runEffect.ts", "runtime", "the one place an Effect becomes IO"],
+  ["src/shared/source/db.ts", "edge", "designated entry point for the world"],
+  ["next.config.ts", "ignored", "declared out of scope, not unknown"],
+  // 未知の申告が「決して起きない機能」になっていないことの証明。**予約名を使う**のが要点:
+  // 未分類が出た時に verify が勧める直し方は「その名前に役割を与えよ」なので、実在しうる名前で
+  // これを書くと、勧めどおりに直した瞬間 L6 が落ちる ——「自己テストがユーザの表を縛る」という
+  // 逆立ちが起きる。この2つの名前だけは、どのプロジェクトも役割を与えてはならない。
+  ["app/__spacta_self_test_unknown__.tsx", null, "an invented convention is announced, never guessed at"],
+  // ただし「専用の役割が無い」と「どこにいるか分からない」は別である。feature の中にいると
+  // 分かっているファイルは未知ではない —— 弱い役割として申告できる。INCONCLUSIVE を前者にも
+  // 使うと、コロケートしたテスト1つで走行が止まり、利用者は IGNORED に手を伸ばす訓練を受ける。
+  ["src/features/x/labels.ts", "feature-internal", "an ordinary file inside a feature is weakly governed, not unknown"],
+  ["src/lib/utils.ts", "unscoped", "a file outside the Form's layers is declared, not fatal"],
+  ["src/features/x/core.test.ts", "test", "colocated tests must never block a run"],
+  // 掟を間違えて当てるのは、当てないより悪い。app router の規約名は app router の中にしか
+  // 存在しない: src/ に同名のファイルがあっても source ではないし、L5 を浴びる筋合いもない。
+  ["src/features/x/route.ts", "feature-internal", "an app-router name inside src/ is a domain file, not a boundary"],
+];
+
+function runClassifierSelfTest() {
+  const failures = [];
+  for (const [path, expect, label] of CLASSIFIER_CASES) {
+    const got = classifyPath(path);
+    if (got !== expect) {
+      failures.push(`self-test failed: classifier — ${label}\n    expected: ${path} -> ${JSON.stringify(expect)}` +
+        `\n    got:      ${path} -> ${JSON.stringify(got)}`);
+    }
+  }
+  // 期待値に使った役割が表に実在すること。ROLES から役割が消えたのにケースが残っている、
+  // という静かな腐り方を塞ぐ（分類器は文字列を返すだけなので、綴り間違いも同じ穴になる）。
+  for (const [, expect] of CLASSIFIER_CASES) {
+    if (expect !== null && !ROLES[expect]) failures.push(`self-test failed: classifier expects role '${expect}', which ${PLATFORM_TABLE} does not define`);
+  }
+  return failures;
 }
 
 function runSelfTest() {
@@ -1460,7 +1635,7 @@ function runSelfTest() {
       failures.push(`self-test failed: ${c.label}\n    expected: ${expectedStr}\n    got:      ${actualStr}`);
     }
   }
-  return failures;
+  return [...failures, ...runClassifierSelfTest()];
 }
 
 // ───────────────────────── JSON 出力（--json）─────────────────────────
@@ -1472,13 +1647,18 @@ function emitJson(payload) {
   });
   const body = {
     tool: "spacta-verify",
-    schemaVersion: 1,
+    // 2: `scan.checks[].roots` → `.scope`（役割で書かれたチェックはディレクトリを名乗らない）、
+    //    および `roles` の追加。status "inconclusive" の原因が1つ増えた（未分類ファイル）。
+    schemaVersion: 2,
     projectRoot,
     selfTest: payload.selfTest,
     status: payload.status,
     // What was actually walked, per check. Consumers can tell "found nothing" from
     // "looked at nothing" — see status "inconclusive".
     scan: payload.scan ?? null,
+    // What the walked files were understood to be. `unclassified` non-empty means this run
+    // could not be green whatever the checks found: something was walked that Spacta cannot name.
+    roles: payload.roles ?? null,
     errors: (payload.errors ?? []).map(relV),
     warns: (payload.warns ?? []).map(relV),
     infos: (payload.infos ?? []).map(relV),
@@ -1506,6 +1686,73 @@ function printScanReport(report) {
     console.log(`    ${r.law.padEnd(3)} ${r.name.padEnd(w)}  ${String(r.scanned).padStart(4)} files   ${mark} ${r.found}`);
   }
   console.log("");
+}
+
+// 役割カバレッジ。既定は1行——「何ファイルを、何だと分かった上で見たか」。
+// 全文（役割ごとの掟・宣言された弱さ）は --roles、または申告すべきことがある時に自動で出る。
+function printRoleCoverage(cov) {
+  const counts = cov.roles.map((r) => `${r.role} ${r.count}`).join(", ");
+  const drift = cov.roles.filter((r) => r.shortfall.length);
+  const full = SHOW_ROLES || cov.unknown.length > 0 || drift.length > 0;
+
+  if (!full) {
+    console.log(`  Roles (${platform.name}): ${cov.total} files, 0 unclassified — ${counts}`);
+    console.log("    (--roles for what each role is and which laws reach it)\n");
+    return;
+  }
+
+  console.log(`  Roles (${platform.name}) — ${cov.total} files, ${cov.unknown.length} unclassified:`);
+  const w = Math.max(1, ...cov.roles.map((r) => r.role.length)); // 全ファイル未分類なら roles は空
+  const pad = " ".repeat(w + 17); // 4 indent + role + 2 + 4-wide count + " files  "
+  for (const r of cov.roles) {
+    const laws = r.laws.length ? r.laws.join(", ")
+      : r.partial.length ? `no Law reaches all of them — ${r.partial.join(", ")}`
+      : "no Law reaches it";
+    console.log(`    ${r.role.padEnd(w)}  ${String(r.count).padStart(4)} files  ${laws}`);
+    console.log(`${pad}${ROLES[r.role].what}`);
+    if (r.unchecked) console.log(`${pad}not checked: ${r.unchecked}`);
+    // 表が「この役割はこの掟が守る」と言っているのに、その掟がこのプロジェクトの当該ファイルに
+    // 届いていない。コードの違反ではなく **表の主張の誤り** なので落とさない（同じ検査を
+    // starter/ に当てる L6 側が err で落とす）。ここは事実の申告に徹する。
+    if (r.shortfall.length) {
+      const list = r.missedFiles.slice(0, 3).join(", ") + (r.missedFiles.length > 3 ? `, +${r.missedFiles.length - 3} more` : "");
+      console.log(`${pad}⚠ the platform table claims ${r.shortfall.join(", ")} for this role, which did not reach: ${list}`);
+    }
+  }
+  if (cov.unknown.length > 0) {
+    console.log(`\n    unclassified — no role could be named for these ${cov.unknown.length} file(s):`);
+    for (const rel of cov.unknown) console.log(`      ${rel}`);
+  }
+  console.log("");
+}
+
+// 未分類は「違反」ではない。違反と呼ぶには「この掟に反している」と言えなければならず、役割が
+// 分からないファイルについてそれは言えない——それこそが本版の消しに来た「検査していないことを
+// 断言する」の裏返しである。よって err ではなく exit 2（＝この実行は性格づけできない）。
+//
+// 読者はこの出力を受け取って自分のタスクを続けるエージェントである。解決できない非ゼロ終了は
+// ループか小細工を生むので、直せる場所と正当な直し方を必ず名指しする。
+function printUnclassified(unknown) {
+  console.error("verify: INCONCLUSIVE — Spacta could not name the role of every file it walked.\n");
+  console.error(`  ${unknown.length} file(s) matched no convention in ${PLATFORM_TABLE}:`);
+  for (const rel of unknown) console.error(`    ${rel}`);
+  console.error("");
+  console.error("  Spacta does not know what these files are, so it cannot say which laws should have");
+  console.error("  applied to them, and it will not guess. This run is neither green nor red: the laws");
+  console.error("  that did run found nothing, but \"was everything examined?\" has no answer.");
+  console.error("");
+  console.error("  Two legitimate fixes — pick the one that is true, then re-run:");
+  console.error(`   1. Name the role. Edit ${PLATFORM_TABLE}: add the path to RULES with the role it`);
+  console.error("      really has (the roles and what each one means are listed at the top of that file),");
+  console.error("      or to IGNORED if Spacta genuinely does not govern it (config, generated output).");
+  console.error("      That table is Form, not Law — a project is expected to edit it when its Form");
+  console.error("      changes (docs_HUMAN-ONLY/setup.md step 5). A role with `laws: []` is a valid");
+  console.error("      answer: a declared weakness is printed on every run, an unnameable file is not.");
+  console.error("   2. Use a convention that already has a role — move or rename the file so it lands on");
+  console.error("      one. The roles this project already uses are listed in the Roles block above.");
+  console.error("");
+  console.error("  Do not delete the file, and do not widen an existing check to swallow it: neither");
+  console.error("  answers the question of what the file is, which is the only thing being asked.\n");
 }
 
 // The point of a green run is "accept this without reading it". The boundary of that
@@ -1546,10 +1793,10 @@ function printTrustBoundary(report) {
     console.log("\n  NOT verified in this project (0 files matched — the law was not enforced here):");
     for (const r of unverified) {
       console.log(`    ${r.law.padEnd(3)} ${r.promise}`);
-      console.log(`        ${r.name} matched 0 files under ${r.roots.join(", ")}`);
+      console.log(`        ${r.name} matched 0 files (${r.scope})`);
     }
     console.log("    If this project does have such code, the check is pointed at the wrong place:");
-    console.log("    fix its root/match in CHECKS (docs_HUMAN-ONLY/setup.md step 5).");
+    console.log("    fix its roles (or root/match) in CHECKS (docs_HUMAN-ONLY/setup.md step 5).");
   }
 
   const w = Math.max(...NOT_GUARANTEED.map(([k]) => k.length));
@@ -1598,7 +1845,7 @@ if (wiringDead === null) {
 } else if (wiringDead.length > 0) {
   console.error("✗ L6 wiring test failed: these checks select 0 files in the reference corpus:");
   for (const r of wiringDead) {
-    console.error(`   ${r.law.padEnd(3)} ${r.name} — root/match selects nothing under ${CORPUS}`);
+      console.error(`   ${r.law.padEnd(3)} ${r.name} — ${r.scope} selects nothing under ${CORPUS}`);
   }
   console.error("\nA check that selects no files reports no violations, which is indistinguishable");
   console.error("from a check that passed. Fix its root/match in CHECKS, or extend the corpus.");
@@ -1617,6 +1864,41 @@ if (wiringDead === null) {
   console.log(`✓ L6 wiring test: all ${CHECKS.length} registry globs select files in the reference corpus.\n`);
 }
 
+// L6 の締め: 表の主張を参照コーパスに当てる。glob が繋がっていることと、掟が「守る」と名乗った
+// 役割を本当に歩いていることは別の主張である。後者が崩れたのが v0.9.3 の frame/L5 だった。
+const roleClaim = runRoleClaimTest(); // wiringDead が null でない ＝ CORPUS はここでは必ず在る
+if (roleClaim.unknown.length > 0 || roleClaim.overclaimed.length > 0) {
+  console.error("✗ L6 role-claim test failed against the reference corpus:");
+  for (const rel of roleClaim.unknown) {
+    console.error(`   unclassified  ${rel} — the corpus contains a file the platform table cannot name`);
+  }
+  for (const r of roleClaim.overclaimed) {
+    console.error(`   over-claimed  role ${r.role}: the table says ${r.missing.join(", ")} enforces it, ` +
+      `but no such check walked ${r.files.slice(0, 3).join(", ")}`);
+  }
+  console.error("\nROLES[role].laws is printed as enforcement, so a claim no check backs is the verifier");
+  console.error("asserting something it did not check — the exact defect the role model exists to remove.");
+  console.error("Make the two agree, in whichever direction is true:");
+  console.error(`  - the law really should cover that role -> add the role to that check's \`roles\` in ${__filename}`);
+  console.error(`  - it really does not                    -> drop it from ROLES[role].laws in ${PLATFORM_TABLE}`);
+  console.error("                                             and give the role an `unchecked` note saying so.");
+  console.error("An unenforced role is allowed (`laws: []` is a declared weakness, and it prints). An");
+  console.error("unenforced role that claims to be enforced is not.\n");
+  emitJson({
+    selfTest: {
+      ok: false,
+      failures: [
+        ...roleClaim.unknown.map((f) => `role-claim: ${f} is unclassified in ${CORPUS}`),
+        ...roleClaim.overclaimed.map((r) => `role-claim: role ${r.role} claims ${r.missing.join(", ")} with no check behind it`),
+      ],
+    },
+    status: "red",
+  });
+  process.exit(1);
+} else {
+  console.log(`✓ L6 role-claim test: every corpus file has a role, and every law those ${roleClaim.rolesSeen.length} roles claim actually walks them.\n`);
+}
+
 // README のチェック表は CHECKS からの生成物。ずれていたら err（＝正本を2つに戻させない）。
 const docsDrift = checkChecksTableDrift();
 if (docsDrift.violations.length === 0 && !docsDrift.note) {
@@ -1627,6 +1909,7 @@ const scan = runMainScan();
 const viols = scan.violations;
 viols.push(...docsDrift.violations);
 printScanReport(scan.report);
+printRoleCoverage(scan.coverage);
 
 // L6 proves the verifier is not broken. This proves the verifier actually looked at something.
 // A run that walks zero files finds zero violations, and would otherwise be reported as green —
@@ -1634,7 +1917,7 @@ printScanReport(scan.report);
 if (scan.scannedTotal === 0) {
   console.error("verify: INCONCLUSIVE — 0 files were scanned.\n");
   console.error(`  Nothing matched under ${projectRoot}`);
-  console.error("  Expected src/features/, src/shared/, src/**/core.ts or app/**/page.tsx.");
+  console.error("  Expected a src/ tree (features/, shared/) or an app router beside it.");
   console.error("  Is the target path correct?\n");
   emitJson({
     selfTest: { ok: true, failures: [], wiring: "ok" },
@@ -1715,14 +1998,32 @@ if (RUN_TSC) {
   if (r.status !== 0) { failed = true; console.log("✗ tsc failed"); } else console.log("✓ tsc passed");
 }
 
+// 未分類が残っていれば緑は名乗れない。ただし **赤は名乗れる**: 見つけた違反は自信を持って言える
+// 主張であり、未知のファイルがあることはそれを取り消さない。緑だけが「全部見た」を含意する。
+const unclassified = scan.coverage.unknown;
+
 emitJson({
   selfTest: { ok: true, failures: [], wiring: "ok" },
-  status: failed ? "red" : "green",
+  status: failed ? "red" : unclassified.length ? "inconclusive" : "green",
   scan: { total: scan.scannedTotal, checks: scan.report },
+  roles: {
+    platform: platform.name,
+    total: scan.coverage.total,
+    unclassified,
+    byRole: scan.coverage.roles.map((r) => ({ role: r.role, files: r.count, laws: r.laws, claimedButNotReaching: r.shortfall })),
+  },
   errors, warns, infos: infoViols, notes,
 });
 
 console.log("");
-if (failed) { console.error("verify: Red (merge blocked until violations are resolved)\n"); process.exit(1); }
+if (failed) {
+  if (unclassified.length) {
+    console.error(`verify: Red — and incomplete: ${unclassified.length} walked file(s) had no role (listed above),`);
+    console.error("so even fixing every violation below cannot produce a green until they are named.\n");
+  }
+  console.error("verify: Red (merge blocked until violations are resolved)\n");
+  process.exit(1);
+}
+if (unclassified.length) { printUnclassified(unclassified); process.exit(2); }
 printTrustBoundary(scan.report);
 console.log("\nverify: Green\n");
