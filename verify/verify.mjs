@@ -55,18 +55,29 @@ const PLATFORM_TABLE = join(__dirname, "platform", "nextjs.mjs");
 // itself would just `import 'typescript'`). Fall back to the verifier's own dependency so a
 // target without node_modules — notably `starter/` — can still be verified. Without this
 // fallback the reference implementation cannot be part of the regression corpus.
+//
+// What comes back is inspected, not merely resolved. A resolver may answer with a stub rather
+// than throwing — Bun does, for a target that has no node_modules above it — and the `try`
+// then succeeds with an object that is not the compiler. The scan died several hundred lines
+// later inside parse() with `ts.ScriptTarget is undefined`: exit 1, a stack trace pointing at
+// the verifier, and no statement anywhere of what actually went wrong. "I could not verify"
+// has to be said; it must not be crashed into, and it must never be said as Red.
+const isCompiler = (m) => !!(m && m.createSourceFile && m.forEachChild && m.ScriptTarget && m.SyntaxKind);
 let ts;
-try {
-  ts = createRequire(join(projectRoot, "package.json"))("typescript");
-} catch {
+for (const pkg of [join(projectRoot, "package.json"), join(__dirname, "..", "package.json")]) {
   try {
-    ts = createRequire(join(__dirname, "..", "package.json"))("typescript");
-  } catch {
-    console.error(
-      `Cannot resolve 'typescript' from the target project (${projectRoot}), ` +
-      `nor from the verifier itself.\n  -> run npm install in either location.`);
-    process.exit(2);
-  }
+    const mod = createRequire(pkg)("typescript");
+    if (isCompiler(mod)) { ts = mod; break; }
+  } catch { /* not here — try the next location */ }
+}
+if (!ts) {
+  console.error("verify: INCONCLUSIVE — the TypeScript compiler could not be loaded, so nothing was parsed.\n");
+  console.error(`  Looked for 'typescript' from the target project (${projectRoot})`);
+  console.error(`  and from the verifier itself (${resolve(__dirname, "..")}).`);
+  console.error("  Every check here walks the AST, so with no compiler there is no result to report —");
+  console.error("  not a green, and not a red either.");
+  console.error("  -> install dependencies in either location (npm install / bun install), then re-run.\n");
+  process.exit(2);
 }
 
 // ───────────────────────── ユーティリティ ─────────────────────────
@@ -949,9 +960,10 @@ function featureNameOf(file) {
 //
 // `roles` は「掟が役割を語る」ための入口である。ただし **綺麗に嵌る所にだけ** 使う:
 // L1/L7 の対象は「feature の木」「shared の木」というディレクトリの事実であって役割の集合では
-// ないし、L9/L10 の対象は役割 component の一部でしかない。無理に役割で言い換えると、対応表が
-// 「同期させ続けねばならない第二の正本」になり、レジストリから名前を追い出した利得をそのまま
-// 失う。どれを変換しどれを残したかは verify/README.md に書いてある。
+// ない —— 役割 edge は features/*/source と shared/source に、役割 contract は両方の types.ts に
+// またがるので、どちらの掟の範囲も役割の和で書けない。L4 は意図的に src/ 全体である。
+// 無理に役割で言い換えると、対応表が「同期させ続けねばならない第二の正本」になり、レジストリから
+// 名前を追い出した利得をそのまま失う。どれを変換しどれを残したかは verify/README.md に書いてある。
 
 const CHECKS = [
   {
@@ -996,8 +1008,15 @@ const CHECKS = [
     // `shared/runEffect.ts` — the one switch that most needs an exhaustive terminator —
     // was itself unscanned. No false positives can arise: checkEffectRuntime returns early
     // for any file without a switch on `effect.type`.
+    //
+    // **役割ではなく木で走査する数少ない検査**なので、その木を自分で正しく綴る責任がある。
+    // `src` だけを歩いていた頃、同一のコードが `app/` レイアウトで 12 ファイル、`src/app/`
+    // レイアウトで 15 ファイル走査され、**保証はどちらでも無条件に印字されていた** ——
+    // v0.9.3 で塞いだ欠陥と同じ形が、役割に移らなかった検査の側に残っていた。
+    // 役割リストで綴らないのは意図的である: 新しい規約に役割が与えられたとき、リストなら
+    // 黙って L4 から外れるが、木なら自動的に入る。ここでは網羅の向きが逆になる。
     law: "L4", name: "effect-runtime", severity: "err",
-    root: (r) => join(r, "src"),
+    root: (r) => [join(r, "src"), ...appRootDirs(r)],
     match: (q) => /\.(ts|tsx)$/.test(q),
     run: (f, text) => checkEffectRuntime(f, text),
     promise: "Every handwritten switch on effect.type terminates exhaustively",
@@ -1027,30 +1046,47 @@ const CHECKS = [
     promise: "shared/ does not import feature internals",
   },
   {
+    // Role-driven as of 0.9.4. Until the platform table gained `boundary`, role `component`
+    // also held the app router's error/loading/not-found — where a `useEffect` is idiomatic and
+    // where SPACTA.md's src/-worded scope does not reach — so converting would have widened two
+    // Laws past their own text and flagged correct code. With those names classified as
+    // `boundary`, `component` is exactly src/features/*/components/*.tsx and `shared-ui` is
+    // exactly src/shared/ui/*.tsx: the two presentation tiers this law is written for, and
+    // nothing else. Measured file-set-identical to the globs it replaces on starter/ and on a
+    // real project before the swap.
+    //
+    // The one deliberate narrowing the role pass brings: a colocated Foo.test.tsx inside
+    // components/ classifies as `test`, so presentation checks no longer open it. Neither
+    // corpus has one, but a test file is not presentation, and fetch mocks in it are not IO
+    // crossing a membrane.
     law: "L9", name: "presentation-behaviour", severity: "err",
-    root: (r) => join(r, "src"),
-    match: (q) => /\/features\/[^/]+\/components\/.*\.tsx$/.test(q) || /\/shared\/ui\/.*\.tsx$/.test(q),
+    roles: ["component", "shared-ui"],
     run: (f, text) => checkPresentationBehaviour(f, text),
     promise: "Components and shared/ui perform no IO and no non-determinism",
   },
   {
+    // Role `component` alone: shared/ui is out of scope by design, not by omission — its
+    // widget-local state is not domain state (see the checker's own comment).
     law: "L10", name: "component-statelessness", severity: "err",
-    root: (r) => join(r, "src", "features"),
-    match: (q) => /\/components\/.*\.tsx$/.test(q),
+    roles: ["component"],
     run: (f, text) => checkComponentStatelessness(f, text),
     promise: "Feature components are pure functions of their props",
   },
   {
+    // The surfaces where presentation vocabulary is actually written: the shell and the
+    // components under it. That is a union of two roles exactly — `shell` is only ever
+    // src/features/*/shell.tsx — so stating it as one costs nothing and keeps the last
+    // Form-shaped path out of the registry. `clone` below shares this scope on purpose;
+    // leaving one of the two spelled as a glob would recreate the two-copies problem in
+    // miniature.
     law: "L8", name: "presentation-purity", severity: "info",
-    root: (r) => join(r, "src", "features"),
-    match: (q) => /(^|\/)shell\.tsx$/.test(q) || /\/components\/.*\.tsx$/.test(q),
+    roles: ["shell", "component"],
     run: (f, text) => checkPresentationPurity(f, text),
     promise: null,
   },
   {
     law: "—", name: "clone", severity: "info",
-    root: (r) => join(r, "src", "features"),
-    match: (q) => /(^|\/)shell\.tsx$/.test(q) || /\/components\/.*\.tsx$/.test(q),
+    roles: ["shell", "component"],
     batch: (files) => checkClones(files),
     promise: null,
   },
@@ -1357,6 +1393,10 @@ const CLASSIFIER_CASES = [
   ["app/layout.tsx", "frame", "a layout is a frame, not a page"],
   ["src/app/(marketing)/layout.tsx", "frame", "route groups do not change the role"],
   ["app/m/[id]/page.tsx", "source", "dynamic segments do not change the role"],
+  // The name that unblocked L9/L10. It must not resolve to `component`: L9/L10 now walk that
+  // role, and SPACTA.md scopes both to src/ by path, so a drift back here would silently apply
+  // two Laws to app-router error boundaries — where hooks are the framework's own idiom.
+  ["app/error.tsx", "boundary", "an app-router UI boundary is not a feature component"],
   ["src/features/x/core.ts", "core", "Spacta owns this name"],
   ["src/features/x/types.ts", "contract", "membrane vocabulary"],
   ["src/features/x/shell.tsx", "shell", "client edge"],
@@ -1771,6 +1811,15 @@ const NOT_GUARANTEED = [
   ["Semantic correctness", "never checked"],
 ];
 
+// The role-claim test can only weigh ROLES[].laws against files the reference corpus actually
+// has, so every role starter/ contains no file of carries an unmeasured claim — including any
+// role this project added to the platform table.
+//
+// Derived from what the corpus turned out to hold, never listed by hand: starter/ grows and the
+// table grows, and a hand-written list of what they do not cover between them is exactly the
+// stale second copy this version exists to delete.
+const unmeasuredRoles = (rolesSeen) => Object.keys(ROLES).filter((r) => !rolesSeen.includes(r));
+
 // A check that matched 0 files enforced nothing, so its promise must never be printed as a
 // guarantee — that would be the trust boundary itself lying. It is listed separately with its
 // roots instead, because "this law found no problems" and "this law was never pointed at your
@@ -1778,7 +1827,7 @@ const NOT_GUARANTEED = [
 // Deliberately NOT fatal: a project legitimately may have no app router, no shared/ui, or no
 // components yet, and turning every such gap into INCONCLUSIVE would make the honest state
 // unreachable. Saying so out loud is the fix; refusing to run is not.
-function printTrustBoundary(report) {
+function printTrustBoundary(report, rolesSeen) {
   const promised = report.filter((x) => x.promise && x.severity === "err");
   const verified = promised.filter((x) => x.scanned > 0);
   const unverified = promised.filter((x) => x.scanned === 0);
@@ -1799,9 +1848,14 @@ function printTrustBoundary(report) {
     console.log("    fix its roles (or root/match) in CHECKS (docs_HUMAN-ONLY/setup.md step 5).");
   }
 
-  const w = Math.max(...NOT_GUARANTEED.map(([k]) => k.length));
+  const unmeasured = unmeasuredRoles(rolesSeen);
+  const rows = unmeasured.length === 0 ? NOT_GUARANTEED : [...NOT_GUARANTEED,
+    ["Law claims of roles the reference corpus has no file of",
+     `unverified — L6 measures ROLES[].laws against starter/, which holds no file of role: ${unmeasured.join(", ")}`]];
+
+  const w = Math.max(...rows.map(([k]) => k.length));
   console.log("\n  NOT guaranteed by this green:");
-  for (const [what, how] of NOT_GUARANTEED) {
+  for (const [what, how] of rows) {
     console.log(`    - ${what.padEnd(w)}  → ${how}`);
   }
 }
@@ -1820,7 +1874,13 @@ const selfFail = runSelfTest();
 if (selfFail.length) {
   console.error("✗ L6 self-test (Verifier Self-Verification) failed:");
   selfFail.forEach((m) => console.error("   " + m));
-  console.error("\nThe verifier itself is malfunctioning. Other results cannot be trusted. Fix verify.mjs.\n");
+  // 読み手はタスクを持ったエージェントである。「verify.mjs を直せ」は、自分のタスクが製品機能で
+  // ある相手には正当な行動ではない —— 回避策を捏造させるか、ループさせる。逃げ道ではなく
+  // **エスカレーション先**を書く。
+  console.error("\nThe verifier itself is malfunctioning. Every other result in this run is untrustworthy.");
+  console.error("If fixing the verifier is your task, fix verify.mjs. If it is not, this is not yours to");
+  console.error("route around: revert any local change under verify/ and report the failure above as a");
+  console.error("blocker. Editing your own code to satisfy a broken verifier makes the damage permanent.\n");
   emitJson({ selfTest: { ok: false, failures: selfFail }, status: "red" });
   process.exit(1);
 }
@@ -1836,7 +1896,9 @@ if (wiringDead === null) {
   console.error("  Without it the CHECKS registry globs are unverified: a glob that selects 0 files");
   console.error("  reports 0 violations and is indistinguishable from a law that passed.");
   console.error("  Restore starter/ next to verify/ (it ships with the verifier), or point this copy");
-  console.error("  of the verifier at one. This run is not green and not red — it is unverified.\n");
+  console.error("  of the verifier at one. This run is not green and not red — it is unverified.");
+  console.error("  If you do not have a corpus to restore, stop and report this: it cannot be resolved");
+  console.error("  from inside a feature task, and no edit to your own code will clear it.\n");
   emitJson({
     selfTest: { ok: true, failures: [], wiring: "missing" },
     status: "inconclusive",
@@ -1848,7 +1910,7 @@ if (wiringDead === null) {
       console.error(`   ${r.law.padEnd(3)} ${r.name} — ${r.scope} selects nothing under ${CORPUS}`);
   }
   console.error("\nA check that selects no files reports no violations, which is indistinguishable");
-  console.error("from a check that passed. Fix its root/match in CHECKS, or extend the corpus.");
+  console.error("from a check that passed. Fix its `roles` (or root/match) in CHECKS, or extend the corpus.");
   console.error("If you customised the Form on purpose (docs_HUMAN-ONLY/setup.md step 5), the fix is");
   console.error("not only the glob: the reference corpus starter/ must be updated to the new Form too,");
   console.error("because this test measures the globs against starter/, never against your tree.\n");
@@ -2017,13 +2079,20 @@ emitJson({
 
 console.log("");
 if (failed) {
+  // 赤と未分類が同時に出る道。読者はこの出力を受け取って自分のタスクを続けるエージェントなので、
+  // 「まだ緑になれない」とだけ告げて直し方を伏せてはならない —— 伏せると、目の前の違反を潰しても
+  // 緑にならない理由を自力で推測することになり、その推測はたいてい「邪魔なファイルを消す」に着地する。
+  // 全文は緑側の printUnclassified が持っているので、ここは所在と禁じ手だけを短く言う。
   if (unclassified.length) {
     console.error(`verify: Red — and incomplete: ${unclassified.length} walked file(s) had no role (listed above),`);
-    console.error("so even fixing every violation below cannot produce a green until they are named.\n");
+    console.error("so even fixing every violation above cannot produce a green until they are named.");
+    console.error(`That is a separate repair, and it usually belongs in ${PLATFORM_TABLE} rather`);
+    console.error("than in the code; re-run once the violations are fixed to get the full instructions.");
+    console.error("Deleting the file is never one of them.\n");
   }
   console.error("verify: Red (merge blocked until violations are resolved)\n");
   process.exit(1);
 }
 if (unclassified.length) { printUnclassified(unclassified); process.exit(2); }
-printTrustBoundary(scan.report);
+printTrustBoundary(scan.report, roleClaim.rolesSeen);
 console.log("\nverify: Green\n");

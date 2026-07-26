@@ -1,5 +1,66 @@
 # Changelog
 
+## Unreleased (0.9.4) — Laws speak in roles
+
+0.9.3 patched L5 to look in `src/app/` as well as `app/`. That closed one instance and not the
+class: `layout.tsx`, `error.tsx`, `middleware.ts` and every convention Next.js has not shipped
+yet were still outside every `err` check, silently. **Enumerating framework filenames opens a new
+hole every time the framework moves.**
+
+A platform table now translates **names to roles**, `CHECKS` entries declare `roles:`, and a file
+whose role cannot be named makes the run `INCONCLUSIVE`. `CHECKS` contains no framework filenames.
+
+### Breaking
+
+- A file under `src/` or an app root that classifies to no role exits `2`. Green now asserts that
+  every walked file could be named, which it did not before.
+- L5 walks the `frame` role: `new Date()` in `app/layout.tsx` was invisible and is now an error.
+- L4 walks the app roots as well as `src/`. On an identical tree it previously scanned 12 files
+  under `app/` and 15 under `src/app/`, printing its promise unqualified in both — the same defect
+  shape 0.9.3 closed for L5, still live in the check that did not convert.
+
+### Added
+
+- **`verify/platform/nextjs.mjs`** — path → role, plus per-role `what` / `unchecked` prose.
+  `laws: []` is not a hole but a **declared weakness**: a named role can print what is not checked
+  about it. Only an unnameable file is a real hole.
+- **Role coverage on every run.** One line when there is nothing to act on; `--roles` for the table.
+  The laws shown per role are **derived from the actual scan**, never read back from the table —
+  copying would make the table a second source of truth, which is the defect being removed.
+- **L6 gained two parts.** A *classifier* self-test pins path → role. A *role-claim* test measures
+  the table against the scan, so a role the table says a law enforces, which no check walks, fails
+  the verifier itself. **The 0.9.3 defect is now caught mechanically, and blamed on the verifier
+  rather than on the user's tree.**
+
+### Changed
+
+- L2, L3, L5, L8, L9, L10 and `clone` converted to roles; equivalence measured on both corpora
+  before each swap (zero file difference). **L1, L4, L7 and `export-ownership` deliberately did
+  not.** Their subject is a *tree*, not a role: role `edge` straddles `features/*/source` and
+  `shared/source`, `contract` straddles both `types.ts` locations. Handing L7 a feature's own file
+  would let it report *"the shared layer imports feature X"* about a file that **is** a feature.
+  For L4 an enumerated role list would also invert the safety property — a new convention would
+  fall silently *out* of L4, where a tree pulls it in.
+- `SPACTA.md` L5 no longer enumerates `page.tsx` / `route.ts` in the Law text. Still 67 lines.
+- Two non-zero exits gained escalation clauses. **The reader is an agent, and an exit it cannot
+  resolve inside its own task makes it loop or invent a workaround** — worse than the hole. A
+  failing L6 self-test now says that editing your own code to satisfy a broken verifier makes the
+  damage permanent; a missing corpus says to stop and report.
+- Under Bun, `createRequire(...)("typescript")` returns a stub rather than throwing, so the
+  documented fallback never fired and the run died on `ts.ScriptTarget` — **exit 1 with a stack
+  trace and no statement of what went wrong.** Resolution is now inspected; a genuinely missing
+  compiler exits `2` with a message.
+
+### Known gaps
+
+- `INCONCLUSIVE` is reserved for *"we cannot name this"*, never for *"this has no specialised
+  role"*. Feature-internal files, tests, private folders and off-Form directories classify to weak
+  roles that print what is unchecked. An earlier draft blocked on a single colocated test file —
+  the defect that trains an operator to reach for the ignore list.
+- The role-claim test can only measure roles the reference corpus contains. The roles it cannot
+  reach are now derived and printed under `NOT guaranteed` rather than listed by hand.
+- Coupling through data is untouched and remains the largest known gap.
+
 ## 0.9.3 — Closing the write path's return route
 
 0.9.1 and 0.9.2 made green honest about what the verifier *walks*. This release closes the one

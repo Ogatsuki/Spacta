@@ -133,8 +133,12 @@ const RULES = [
   [/^(.+\/)?default\.tsx?$/, "source"], // parallel routes のフォールバック。page と同格
   [/^(.+\/)?layout\.tsx?$/, "frame"],
   [/^(.+\/)?template\.tsx?$/, "frame"],
-  [/^(.+\/)?(loading|not-found)\.tsx?$/, "component"],
-  [/^(.+\/)?(error|global-error)\.tsx?$/, "component"],
+  // app router の UI 境界は `component` ではない。SPACTA.md は L9/L10 の適用範囲を `src/` と
+  // **パスで**書いているので、app/ 配下のこれらに component を名乗らせると表が到達しない掟を
+  // 主張し続けることになる (role-claim テストが恒久的な ⚠ を出す)。掟の文面を黙って広げるより、
+  // 別の役割として「何が検査されていないか」を印字する方が正しい。
+  [/^(.+\/)?(loading|not-found)\.tsx?$/, "boundary"],
+  [/^(.+\/)?(error|global-error)\.tsx?$/, "boundary"],
   [/^(.+\/)?(sitemap|robots|manifest)\.tsx?$/, "source"], // 動的メタデータ生成は IO しうる
   [/^(.+\/)?(icon|apple-icon|opengraph-image|twitter-image)\.tsx?$/, "source"],
   // `_` 始まりのフォルダはルーティングから除外される Next.js の公式規約 (private folder)。

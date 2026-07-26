@@ -28,13 +28,13 @@ The table below is **generated from the `CHECKS` registry** in `verify.mjs` — 
 | L1 | `cross-feature-imports` | err | `src/features/` | `/\.(ts\|tsx)$/` | No feature imports another feature's internals | per file |
 | L2 | `core-purity` | err | (role pass) | role `core` | core.ts holds no IO and no non-determinism | per file |
 | L3 | `effect-return` | err | (role pass) | role `core` | An Effect that asks for an answer has an Action able to receive it | batch |
-| L4 | `effect-runtime` | err | `src/` | `/\.(ts\|tsx)$/` | Every handwritten switch on effect.type terminates exhaustively | per file |
+| L4 | `effect-runtime` | err | `src/`, `app/`, `src/app/` | `/\.(ts\|tsx)$/` | Every handwritten switch on effect.type terminates exhaustively | per file |
 | L5 | `source-purity` | err | (role pass) | role `source` or role `frame` | Server boundaries and the frames around them generate no ids, time or randomness | per file |
 | L7 | `shared-features-isolation` | err | `src/shared/` | `/\.(ts\|tsx)$/` | shared/ does not import feature internals | per file |
-| L9 | `presentation-behaviour` | err | `src/` | `/\/features\/[^/]+\/components\/.*\.tsx$/` or `/\/shared\/ui\/.*\.tsx$/` | Components and shared/ui perform no IO and no non-determinism | per file |
-| L10 | `component-statelessness` | err | `src/features/` | `/\/components\/.*\.tsx$/` | Feature components are pure functions of their props | per file |
-| L8 | `presentation-purity` | info | `src/features/` | `/(^\|\/)shell\.tsx$/` or `/\/components\/.*\.tsx$/` | — | per file |
-| — | `clone` | info | `src/features/` | `/(^\|\/)shell\.tsx$/` or `/\/components\/.*\.tsx$/` | — | batch |
+| L9 | `presentation-behaviour` | err | (role pass) | role `component` or role `shared-ui` | Components and shared/ui perform no IO and no non-determinism | per file |
+| L10 | `component-statelessness` | err | (role pass) | role `component` | Feature components are pure functions of their props | per file |
+| L8 | `presentation-purity` | info | (role pass) | role `shell` or role `component` | — | per file |
+| — | `clone` | info | (role pass) | role `shell` or role `component` | — | batch |
 | — | `export-ownership` | info | `src/features/` | `/(^\|\/)types\.ts$/` | — | batch |
 <!-- checks:end -->
 
@@ -61,17 +61,23 @@ Every `.ts`/`.tsx` under `src/` and the app router is classified on every run. T
 
 **`ROLES[role].laws` is a claim, and claims are checked.** The L6 role-claim test measures the table against `starter/`: every corpus file must have a role, and every law a role claims must actually walk those files. A role with `laws: []` is fine — a *declared weakness* is printed on every run and can be reasoned about. A role that claims enforcement nobody supplies is what the `frame` role was before 0.9.4, and it now fails L6 at exit `1`, blaming the verifier rather than your code.
 
-Only three checks converted, and that restraint is the point — a name-to-role mapping that half-fits becomes a second source of truth to keep in sync, which costs exactly what removing the names bought:
+**What that test cannot reach is printed too.** It can only weigh a claim where the corpus has a file to weigh it on, so any role `starter/` contains no file of — and any role a project adds to the platform table — carries an unmeasured claim. The trust boundary names those roles on every green, derived from what the corpus turned out to hold rather than listed by hand, so the line cannot go stale as either side grows.
+
+A check converts when its scope **is** a union of roles, and not otherwise. The restraint is the point — a name-to-role mapping that half-fits becomes a second source of truth to keep in sync, which costs exactly what removing the names bought:
 
 | Check | Role-driven? | Why |
 |---|---|---|
 | L5 `source-purity` | yes — `source`, `frame` | The whole motivating case. Its scope *is* "the framework's boundary files", which is a role, not a directory. |
 | L2 `core-purity` | yes — `core` | Exactly the Core files. Narrower than the old "any `core.ts` under `src/`"; safe only because a `core.ts` that loses L2 now surfaces under another role, or stops the run as unclassified. It cannot go silent. |
 | L3 `effect-return` | yes — `core` | Same file set, same reasoning. |
-| L1, L7 | no | Their subject is a **tree** (`the feature`, `the shared layer`), not a role. Role `edge` straddles `features/*/source` and `shared/source`; role `contract` straddles both `types.ts` locations. Neither law's scope is any union of roles. |
-| L4 | no | Deliberately the whole `src/` tree — "wherever a switch on `effect.type` might be written" is not a role. |
-| L9, L10, L8, `clone` | no | Role `component` also covers the app router's `error` / `loading` / `not-found`, and `SPACTA.md` scopes L9/L10 to `src/` by path. Converting would silently extend two Laws past their written text and flag idiomatic Next.js error boundaries. The honest report is the one the coverage block already prints: those files classify, and no Law reaches them. |
+| L9 `presentation-behaviour` | yes — `component`, `shared-ui` | Blocked until 0.9.4 by the platform table, not by the law: role `component` also held the app router's `error` / `loading` / `not-found`, where a `useEffect` is the framework's own idiom and where `SPACTA.md`'s `src/`-worded scope does not reach. Those names are now role `boundary`, so `component` is exactly `features/*/components/*.tsx` and `shared-ui` exactly `shared/ui/*.tsx` — the two presentation tiers, and nothing else. |
+| L10 `component-statelessness` | yes — `component` | Same unblocking. `shared/ui` stays out by design, not by omission. |
+| L8 `presentation-purity`, `clone` | yes — `shell`, `component` | The surfaces where presentation vocabulary is written. `shell` is only ever `features/*/shell.tsx`, so the union is exact. Both share one scope deliberately; spelling one of them as a glob would recreate the two-copies problem in miniature. |
+| L1, L7 | no | Their subject is a **tree** (`the feature`, `the shared layer`), not a role. Role `edge` straddles `features/*/source` and `shared/source`; role `contract` straddles both `types.ts` locations. Neither law's scope is any union of roles — and L7 stated in roles would hand `checkSharedReverseDependency` a feature's own files, where its finding ("the shared layer imports feature X") is not merely wrong but unsayable. |
+| L4 | no | Deliberately the whole `src/` tree — "wherever a switch on `effect.type` might be written" is not a role. An enumerated role list would also invert the safety property this model exists for: a role added later would silently fall *out* of L4 instead of being announced. |
 | `export-ownership` | no | Its subject is a *feature's* `types.ts`; role `contract` also holds `shared/types.ts`, which is not a feature's sharing budget. |
+
+The four conversions in 0.9.4 were each measured file-set-identical to the globs they replace, on `starter/` and on a real project, before the swap. The one difference the model brings is deliberate and absent from both corpora: a colocated `Foo.test.tsx` under `components/` is role `test`, so the presentation checks no longer open it.
 
 
 The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. Self-test alone is not sufficient: it feeds fixture text straight into the checker functions, so it never exercises a `CHECKS` entry's `root`/`match` — a mistyped glob that selects zero files would still pass the self-test and then report green on a real scan. The wiring test closes that gap by asserting each registry glob selects more than zero files (`> 0`, deliberately not a tuned threshold) in the reference corpus (`starter/`, shipped next to the verifier); if that corpus is absent the run exits `2` (INCONCLUSIVE) instead of continuing, because a `SKIPPED` line that still allows a green would let anyone delete the wiring test by deleting a directory. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
