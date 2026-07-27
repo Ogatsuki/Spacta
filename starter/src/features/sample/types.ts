@@ -26,7 +26,11 @@ export type Action =
   | { type: "RESET"; now: string }
   // Return path of the write. Core must handle both members: the never guard in update() turns
   // deleting either one into a tsc error, and that is what enforces L3's outbound half.
-  | { type: "EFFECT_SUCCEEDED"; correlationId: string; id?: string }
-  | { type: "EFFECT_FAILED"; correlationId: string; message: string };
+  //
+  // correlationId is nullable because the engine answers for *every* Effect it performs, and
+  // LOG never asked a question. Core reads null as "no write of mine is being spoken about"
+  // and says so in a case of its own — a sentence, not a branch the loop takes on its behalf.
+  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; id?: string }
+  | { type: "EFFECT_FAILED"; correlationId: string | null; message: string };
 
 export type { Effect };

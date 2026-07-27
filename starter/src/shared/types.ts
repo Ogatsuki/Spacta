@@ -6,6 +6,8 @@
 // A value where Core declares "desired IO". It does not execute (only data crosses the boundary).
 // An Effect whose answer must reach Core carries a correlationId: pairing a request with its
 // answer is non-determinism too, so the edge mints it and Core receives it as a value (L3).
+// A member without one still gets an answer — the engine reports the outcome of every Effect
+// it performs — but that answer names no write, so Core can only note that it arrived.
 export type Effect =
   | { type: "SAVE"; correlationId: string; key: string; value: string }
   | { type: "LOG"; message: string };

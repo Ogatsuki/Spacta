@@ -35,12 +35,17 @@ export function update(state: State, action: Action): [State, Effect[]] {
     case "EFFECT_SUCCEEDED": {
       // The server's answer arrives as data. Anything it assigned (here, action.id) is injected,
       // never generated in Core (L3) — this is where an optimistic placeholder id is replaced.
+      // A null correlationId is the answer to an Effect that asked nothing (LOG): it confirms
+      // no write, so it retires no pending write either.
+      if (action.correlationId === null) return [state, []];
       const next: State = { ...state, pending: state.pending.filter((c) => c !== action.correlationId) };
       return [next, []];
     }
     case "EFFECT_FAILED": {
       // Compensation. Only a write we actually recorded can be undone, so guard on pending
-      // rather than assuming; a late or duplicate answer must not move count twice.
+      // rather than assuming; a late or duplicate answer must not move count twice. An
+      // unidentified failure (LOG) undid nothing optimistic, so there is nothing to put back.
+      if (action.correlationId === null) return [state, []];
       if (!state.pending.includes(action.correlationId)) return [state, []];
       const next: State = {
         ...state,
