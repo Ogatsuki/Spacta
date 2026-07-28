@@ -27,6 +27,18 @@ import { legacyRun } from "./drivers.mjs";
 const here = dirname(fileURLToPath(import.meta.url));
 const starterEngine = join(here, "..", "starter", "src", "shared", "spacta");
 const livingdocEngine = join(here, "..", "..", "livingdoc", "src", "shared", "spacta");
+/**
+ * Every place the engine exists on disk. It is one file that happens to be copied — starter
+ * ships it as the template, livingdoc runs it, and `livingdoc/verify/starter/` carries it as
+ * part of the reference corpus the verifier's wiring test needs. Until the engine is a package,
+ * this list is the only thing stopping the copies from drifting, so a new copy belongs here on
+ * the day it is made.
+ */
+const engineCopies = [
+  starterEngine,
+  livingdocEngine,
+  join(here, "..", "..", "livingdoc", "verify", "starter", "src", "shared", "spacta"),
+];
 
 let failures = 0;
 let checks = 0;
@@ -185,9 +197,8 @@ async function recordedRun() {
 // ───────────────────────── 5. the two copies of the engine have not drifted ───────────────
 
 function identical(name) {
-  const a = readFileSync(join(starterEngine, name));
-  const b = readFileSync(join(livingdocEngine, name));
-  return a.equals(b);
+  const first = readFileSync(join(engineCopies[0], name));
+  return engineCopies.every((dir) => readFileSync(join(dir, name)).equals(first));
 }
 
 // ───────────────────────── run ─────────────────────────
@@ -245,9 +256,9 @@ assertEqual(
   "and nothing else is — a recorded State would make the replay cross-check agree with itself",
 );
 
-console.log("\nengine copies — starter and livingdoc:");
-assert(identical("runtime.ts"), "shared/spacta/runtime.ts is byte-identical in both repos");
-assert(identical("react.ts"), "shared/spacta/react.ts is byte-identical in both repos");
+console.log(`\nengine copies — all ${engineCopies.length} of them:`);
+assert(identical("runtime.ts"), "shared/spacta/runtime.ts is byte-identical in every copy");
+assert(identical("react.ts"), "shared/spacta/react.ts is byte-identical in every copy");
 
 console.log(
   failures === 0

@@ -48,7 +48,7 @@ Rows are the machine-readable scope. What follows is the part a table cannot car
 - **L5's scope is roles `source` and `frame`,** not a list of filenames. `source` is whatever the framework currently calls a server boundary (`page`, `route`, `default`, `sitemap`, `opengraph-image`, …) in either app router location; `frame` is the chrome around it (`layout`, `template`), which may legally `await` IO and until 0.9.4 was outside every `err` check. Non-deterministic generation is an `err`; direct `.reduce()` aggregation is a `warn`. Every one of those files gets the same AST inspection.
 - **L10 is scoped to feature components only.** `shared/ui` is deliberately out of scope: widget-local state (disclosure, focus trap, popover position) is not domain state and never crosses the membrane.
 - **`export-ownership` produces two diagnostics.** `dead-export` = an exported contract imported nowhere Spacta can see (dead contract, wasted sharing budget); `single-owner-export` = a contract imported by exactly one file, excluding the `Action`/`Effect`/`State`/`InitData` membrane vocabulary. The consumer set is *every classified file* — the role pass already walked them — which is why pages and routes count: they import feature types, and walking `src/` alone would report those exports as dead.
-- **Not in the registry** (they walk no per-check glob): the L6 self-test, wiring test and role-claim test; the `types.ts` line budget (shared = 250, feature = 200) and `tsconfig` app inclusion, both info notes; and the `docs-drift` err above.
+- **Not in the registry** (they walk no per-check glob): the L6 self-test, wiring test and role-claim test; the per-feature **tiers** (see below — deliberately not a check, because it has no promise to make); the `types.ts` line budget (shared = 250, feature = 200) and `tsconfig` app inclusion, both info notes; and the `docs-drift` err above.
 - **A check that matched 0 files is never listed as guaranteed.** The trust boundary prints such checks under `NOT verified in this project` with the scope it searched, because "this law found no problems" and "this law was never pointed at your code" are otherwise indistinguishable. That is reported, not fatal: a project may legitimately have no app router or no `shared/ui` yet.
 
 ## Roles — why the registry stops naming framework files
@@ -79,8 +79,42 @@ A check converts when its scope **is** a union of roles, and not otherwise. The 
 
 The four conversions in 0.9.4 were each measured file-set-identical to the globs they replace, on `starter/` and on a real project, before the swap. The one difference the model brings is deliberate and absent from both corpora: a colocated `Foo.test.tsx` under `components/` is role `test`, so the presentation checks no longer open it.
 
+## Tiers — how deep each feature actually adopted Spacta
 
-The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. Self-test alone is not sufficient: it feeds fixture text straight into the checker functions, so it never exercises a `CHECKS` entry's `root`/`match` — a mistyped glob that selects zero files would still pass the self-test and then report green on a real scan. The wiring test closes that gap by asserting each registry glob selects more than zero files (`> 0`, deliberately not a tuned threshold) in the reference corpus (`starter/`, shipped next to the verifier); if that corpus is absent the run exits `2` (INCONCLUSIVE) instead of continuing, because a `SKIPPED` line that still allows a green would let anyone delete the wiring test by deleting a directory. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
+Spacta used to print a green over a round trip that did not exist. A feature may declare Effects and throw the answers away, and because L3's receptacle check is opt-in by construction — it starts from an Effect carrying a `correlationId` — a feature whose Effects carry none was never examined, and nothing said so. A partly-adopting project received *reassurance that nothing was working*. That is worse than a hole, because a hole at least does not lie about itself.
+
+So every run prints a **tier per feature**, in the same place and shape as the role summary:
+
+```
+  Tiers: pageview T3, moderation T2, materialrequest T2, catalog T1, search T1, profile T1
+    T2 features declare Effects but do not receive their results — the write-path
+    round trip is NOT verified for them.
+```
+
+| Tier | Condition | What the green then covers |
+|---|---|---|
+| `T0` | No `core.ts` — `page.tsx` → `components/` only | L9 / L10 only |
+| `T1` | `core.ts` receiving an `InitData` (a pure state machine) | + L2 / L3 inbound |
+| `T2` | `+ shell.tsx`, and `core.ts` declares or builds an Effect | + L1 / L4 |
+| `T3` | `+` the round trip: its Effects carry a `correlationId` **and** `core.ts` handles `EFFECT_SUCCEEDED` / `EFFECT_FAILED` | + L3 outbound |
+| `T?` | A `core.ts` the ladder could not grade — printed with the reason | unstated, deliberately |
+
+What is inspected is syntax in the feature's own `core.ts`, plus the roles of its files (`core`, `shell`) as the platform table names them — no filename is spelled out here, and no type is resolved across modules. The `Effect` construction sites are found **by position**: the object literals directly inside the second element of a returned `[state, [ … ]]` tuple. Recognising "any object literal with a `type` property" instead would count things that are not Effects — `pending: [{ correlationId, kind, tempId }]` in a real `core.ts` would make "carries an identifier" true everywhere and collapse the T2/T3 distinction.
+
+Since the runtime landed, the outcome cases are no longer the discriminator: the engine dispatches an outcome for *every* Effect and the exhaustiveness guard makes `tsc` reject a `core.ts` that has no case for it, so every feature has them. **What separates T2 from T3 is whether the feature's own Effects carry an identifier** — whether an answer can name the write it belongs to.
+
+Three properties of this printing are load-bearing:
+
+- **A tier never changes the exit code, and no tier is a finding.** T1 and T2 are legitimate. Three of livingdoc's six features have no `shell.tsx` and need no round trip at all; forcing one on them would be the neat-freak failure `SPACTA.md` §2 warns about, and would teach users to reach for an ignore list. Saying it out loud is the fix; refusing to run is not.
+- **A tier is never listed as a guarantee.** It is the *scope* of the guarantees printed beside it, which is why it is not a `CHECKS` entry: an entry carries a `promise`, and a tier promises nothing. `NOT guaranteed by this green` points at the tier line instead of restating it.
+- **The judgement is falsifiable, in two layers.** `verify/fixtures/tier-*.core.ts` pin the discrimination — a T2 specimen reported as T3, or a T3 specimen falling back to T2, fails L6 at exit `1`. And the same judgement is run against `starter/` through the real role pass, asserting that more than zero features are graded (`> 0`, not a tuned threshold), that none comes out `T?`, and that the top rung is actually reached. Neither layer suffices alone: fixtures alone would pass a judgement wired to no files, and the corpus alone would pass a judgement that always answers `T3`.
+
+`--json` carries the same result as `tiers` (schema 3). A consumer must not turn it into a task: it is a statement about what a project adopted, not a defect list.
+
+
+The L6 self-test suite is the backbone of the verifier. Without it, the entire verification system reverts to a 'hope'-based model: we would claim to enforce rules via tooling without actually verifying that the tools work. Self-test alone is not sufficient: it feeds fixture text straight into the checker functions, so it never exercises a `CHECKS` entry's `root`/`match` — a mistyped glob that selects zero files would still pass the self-test and then report green on a real scan. The wiring test closes that gap by asserting each registry glob selects more than zero files (`> 0`, deliberately not a tuned threshold) in the reference corpus; if that corpus is absent the run exits `2` (INCONCLUSIVE) instead of continuing, because a `SKIPPED` line that still allows a green would let anyone delete the wiring test by deleting a directory. **Regardless of how you structure your codebase, this self-test check cannot be bypassed.**
+
+The corpus is `starter/`, and it ships with the verifier: it is looked for beside `verify/` (where this distribution keeps it, since it doubles as the template a project starts from) and then inside `verify/starter/` (where a project that copied only the verifier into itself should keep it, rather than parking a template next to its own `src/`). Either location is found; neither being present is INCONCLUSIVE, never a silent skip.
 
 ### L8 Color Token Evaluation (Details on Presentation Purity)
 
@@ -155,6 +189,7 @@ The fix was to change to AST-based evaluation (inspecting for `NeverKeyword` nod
 - **L8 is a heuristic based on color sets**. It flags grayscales and color+opacity, while allowing status colors and semantic tokens. It is not perfect and can miss new Tailwind aliases, acting purely as an **info/burn-in**. True UI alignment (fonts, rounded corners, overall feel) lies outside color tokens, handled by the `frontend-design` skill / human reviews.
 - **Clone detection is a heuristic (Jaccard similarity ≥ 0.9, token count ≥ 5)**. It compares the set of "child tag names + className tokens" for root JSX elements. Since it compares classNames as sets, **it is unaffected by Tailwind class ordering**. Child JSX returned by `.map()` is excluded from parent comparison to avoid false nesting duplicates. It merely flags **suspected** duplications as info. Deciding whether to dry up duplication is left to the gardener/human.
 - **L3 `effect-return` checks the receptacle, not the round trip**. It proves the feature *declares* an Action able to receive an Effect's answer; it does not trace that the Shell actually dispatches it, nor that Core does anything useful with it. It is also opt-in by construction: a feature that never puts a `correlationId` on an Effect is never examined, so a project that never adopts the pattern stays green with zero write-path guarantees. Both facts are printed in the trust boundary. Deliberate false negatives, chosen because a false positive here is worse: if the `Action` union cannot be found next to `core.ts`, or a union member resolves to a type the checker cannot read, it reports nothing.
+- **A tier is read off syntax, so it can only understate.** It sees a feature's own `core.ts` and the roles of its files: a parameter typed `*InitData`, a return type mentioning `Effect[]`, the object literals in the effects slot of a returned tuple, and the `case` labels of a `switch` on `action.type`. Effects assembled by a helper and returned as a variable are not seen as construction sites, so such a feature reports `T2` (with the reason printed) rather than `T3` — the ladder never invents a rung it could not read, and `T?` exists for the case where it could not read the first one either. It does not trace that a `correlationId` actually reaches the server or comes back: that is the runtime's job, and `NOT guaranteed by this green` still says so.
 - **Does not check semantic intent**. Green `verify` does not guarantee the app behaves correctly. It only ensures borders aren't broken and the structure is clean (`SPACTA.md` §4.5).
 - Designed as a custom AST script to avoid dependencies on ESLint flat config (which broke due to circular references in the benchmark project). In production, you can replace this with dependency-cruiser, etc. (`SPACTA.md` §2).
 
@@ -177,6 +212,14 @@ verify/
     good-effect-return.types.ts L3: Same Action plus EFFECT_SUCCEEDED/EFFECT_FAILED (should not be false-positived)
     no-correlation.core.ts      L3: Core that never uses correlationId; paired with the bad types it must stay
                                     silent — the executable record that this check is opt-in by construction
+    tier-t3.core.ts          Tiers: a closed round trip (InitData, identified Effects, both outcome cases).
+                                    Must be graded T3 with a shell and T1 without one — the top rung, and
+                                    the proof that shell presence is actually consulted
+    tier-t2.core.ts          Tiers: Effects declared, none carrying a correlationId, both outcome cases
+                                    present (tsc forces those). Must never be reported T3 — this is the
+                                    shape of the false green the tier printing exists to remove
+    tier-ungraded.core.ts    Tiers: everything except a parameter typed *InitData, so the ladder's first rung
+                                    cannot be read. Must print T? with a reason, never a guessed tier
     bad-cross-import.ts      L1: Imports adjacent feature (should be rejected)
     bad-shell-switch.shell.tsx  L4: Handwritten switch without exhaustiveness termination (should be rejected)
     bad-shared-import.shared.ts L7: Shared importing a feature (should be rejected)
@@ -200,6 +243,10 @@ verify/
     shared-export.consumer-a.ts / -b.ts  Two consumers of above
   README.md                  This file. Its check table is generated from CHECKS
                              (node verify/verify.mjs --write-docs); a drifted table is an err
+  starter/                   Optional location for the reference corpus, for a project that copied
+                             the verifier into itself. In this distribution the corpus is `starter/`
+                             beside `verify/` instead, because it doubles as the project template;
+                             the verifier looks in both places and exits 2 if it finds neither.
 ```
 
 The classifier's fixtures are **path literals** (`CLASSIFIER_CASES` in `verify.mjs`), not files on disk: its input is a path, so an empty file next to the literal would only create a second thing that can drift. Two of those literals are reserved sentinels (`__spacta_self_test_unknown__`) and no project may ever give them a role — the assertion "an invented name resolves to `null`" is what keeps unknown-detection from becoming a feature that never fires, and writing it against a *plausible* name would make L6 fail the moment somebody followed the advice the `INCONCLUSIVE` message gives.

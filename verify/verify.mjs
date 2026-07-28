@@ -1201,6 +1201,146 @@ function roleCoverage(root, perCheck) {
   return { roles, unknown: classified.filter((c) => c.role === null).map((c) => c.rel), total: classified.length };
 }
 
+// ───────────────────────── 段位（Tiers）── どこまで採用したかの申告 ─────────────────────────
+// verify は Spacta の深い部分（Effect の往復）を採用していない機能に対しても緑を出す。往復を
+// 持たない機能に L3 の outbound が発火しないのは設計どおりだが、**緑がそれを黙っている**なら、
+// 部分的に採用した利用者が受け取るのは「動いていない安心」である。それは穴より悪い。
+//
+//   T0  core.ts が無い（page.tsx → components/ だけ）              … L9 / L10 だけ
+//   T1  + core.ts があり InitData を受ける                          … + L2 / L3(inbound)
+//   T2  + shell.tsx があり Effect を宣言する                        … + L1 / L4
+//   T3  + 往復（Effect が識別子を運び、core が outcome を処理する）  … + L3(outbound)
+//   T?  core.ts はあるが梯子のどの段とも言えない（＝採点できなかった。黙って段位を与えない）
+//
+// **段位は Law ではない。** CHECKS に載せないのは意図的である —— 載せれば promise を持って
+// 「Guaranteed by this green」に並ぶが、段位は保証ではなく **保証の範囲の申告** だからである。
+// 同じ理由で **exit code には一切触れない。** T1 / T2 は正当な状態であり、往復を必要としない
+// 機能に往復を強制することは判断基準2（潔癖症にならない）に反し、利用者に無視リストへ手を
+// 伸ばす訓練をさせる。口に出すのが解決であって、走るのを拒むことではない。
+//
+// 変更① 以降、**すべての機能の core.ts が outcome の case を持つ**（エンジンが無条件に dispatch
+// し、tsc の網羅性がそれを強制する）。したがって T2 と T3 を分けるのは case の有無ではなく、
+// **その機能自身の Effect が識別子を運ぶか** である。運ばない Effect（`SAVE_MATERIAL_REQUEST` /
+// `MODERATE`）は「答えが来ても、どの書き込みの答えか名指しできない」——それが往復の不在である。
+const OUTCOME_ACTIONS = ["EFFECT_SUCCEEDED", "EFFECT_FAILED"];
+
+// `[State, Effect[]]` のような戻り値注釈の中に Effect の配列があるか。型解決はしない: この
+// 判定に必要なのは「この core が Effect を出す口を持つと宣言しているか」だけである。
+function mentionsEffectArray(typeNode, depth = 0) {
+  if (!typeNode || depth > 4) return false;
+  const isEffectRef = (t) => t && ts.isTypeReferenceNode(t) && ts.isIdentifier(t.typeName) && /Effect$/.test(t.typeName.text);
+  if (ts.isParenthesizedTypeNode(typeNode)) return mentionsEffectArray(typeNode.type, depth + 1);
+  if (ts.isTupleTypeNode(typeNode)) return typeNode.elements.some((t) => mentionsEffectArray(t, depth + 1));
+  if (ts.isUnionTypeNode(typeNode) || ts.isIntersectionTypeNode(typeNode)) return typeNode.types.some((t) => mentionsEffectArray(t, depth + 1));
+  if (ts.isArrayTypeNode(typeNode)) return isEffectRef(typeNode.elementType);
+  if (ts.isTypeReferenceNode(typeNode) && ts.isIdentifier(typeNode.typeName) && /^(Array|ReadonlyArray)$/.test(typeNode.typeName.text)) {
+    return isEffectRef(typeNode.typeArguments?.[0]);
+  }
+  return false;
+}
+
+// Effect の構築地点。**位置で決める**: Core が返すタプル `[state, [ …effects… ]]` の第2要素の
+// 直下にあるオブジェクトリテラルだけを Effect と呼ぶ。
+// 「`type` を持つオブジェクトリテラル」を広く拾わないのは、Effect ではない別物を Effect と
+// 数えないためである —— pageview の `pending: [{ correlationId, kind, tempId }]` が実例で、
+// あれを構築地点と数えると「識別子を運んでいる」が常に真になり、T2/T3 の区別が消える。
+function effectSitesIn(sf) {
+  const sites = [];
+  const fromTuple = (expr) => {
+    if (!expr || !ts.isArrayLiteralExpression(expr) || expr.elements.length !== 2) return;
+    const list = expr.elements[1];
+    if (!ts.isArrayLiteralExpression(list)) return;
+    for (const el of list.elements) {
+      if (!ts.isObjectLiteralExpression(el)) continue;
+      const names = objectLiteralPropNames(el);
+      if (!names.has("type")) continue;
+      sites.push({ ...locOf(sf, el), correlationId: names.has("correlationId") });
+    }
+  };
+  eachNode(sf, (n) => {
+    if (ts.isReturnStatement(n)) fromTuple(n.expression);
+    else if (ts.isArrowFunction(n)) fromTuple(n.body); // 式本体の `(s, a) => [s, []]`
+  });
+  return sites;
+}
+
+// core.ts から段位判定に使う事実だけを読む。**型参照を解決しない**のは意図的である:
+// flattenActionUnion は解決できない型参照に出会うと `{unknown:true}` を返し、L3 はそこで
+// 静かに空虚になった（緑のまま N ファイル走査を印字する）。ここで読むのは同じファイルの中に
+// 構文として在るもの——引数の型注釈、戻り値の型注釈、case の判別子、構築地点——だけなので、
+// 「解決できなかった」という状態が存在しない。読めなかったことは judgeTier が T? として印字する。
+export function readCoreFacts(coreFile, coreText) {
+  const sf = parse(coreFile, coreText);
+  let initData = false;
+  let effectReturn = false;
+  const handled = new Set();
+  eachNode(sf, (n) => {
+    if (ts.isParameter(n) && n.type && ts.isTypeReferenceNode(n.type) && ts.isIdentifier(n.type.typeName) &&
+        /InitData$/.test(n.type.typeName.text)) initData = true;
+    if ((ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) || ts.isMethodDeclaration(n)) &&
+        mentionsEffectArray(n.type)) effectReturn = true;
+    // `switch (action.type)` の case 判別子だけを拾う。判定は既存の enclosingActionCase に
+    // 委ねる（`switch (command.command)` 等を Action の case と数えないのはその関数の仕事）。
+    if (ts.isCaseClause(n)) {
+      const d = enclosingActionCase(n.expression);
+      if (d) handled.add(d);
+    }
+  });
+  return { initData, effectReturn, effectSites: effectSitesIn(sf), handled: [...handled] };
+}
+
+// 梯子を上から順に降りる。**満たした一番上の段**がその機能の段位である。
+// 段位を推測しない: 読めなかったときは T? と理由を返し、印字側がそれを見せる。
+export function judgeTier(f) {
+  if (!f.hasCore) return { tier: "T0", why: "no core.ts — page and components only" };
+  const c = f.core;
+  if (!c) return { tier: "T?", why: "core.ts could not be read" };
+  if (!c.initData) {
+    return { tier: "T?", why: "core.ts takes no parameter typed *InitData, so the inbound half of L3 cannot be read off it" };
+  }
+  if (!f.hasShell) return { tier: "T1", why: "no shell.tsx — nothing in this feature declares an Effect" };
+  if (!c.effectReturn && c.effectSites.length === 0) {
+    return { tier: "T1", why: "has a shell, but core.ts neither declares nor builds an Effect" };
+  }
+  if (c.effectSites.length === 0) {
+    return { tier: "T2", unsure: true, why: "core.ts declares Effect[] but no construction site could be read, so the round trip could not be judged — T2 is the floor, not a finding" };
+  }
+  if (!c.effectSites.some((s) => s.correlationId)) {
+    return { tier: "T2", why: "this feature's Effects carry no correlationId, so an answer cannot name the write it belongs to" };
+  }
+  const missing = OUTCOME_ACTIONS.filter((a) => !c.handled.includes(a));
+  if (missing.length > 0) {
+    return { tier: "T2", why: `Effects carry a correlationId but core.ts writes no ${missing.join(" / ")} case` };
+  }
+  return { tier: "T3", why: "Effects carry a correlationId and core.ts handles both outcomes" };
+}
+
+// 機能の列挙は **役割パスから** 引く。ディレクトリ名の綴りをここに増やさない（§6.1）:
+// core / shell が何という名前のファイルかを知っているのは verify/platform/*.mjs だけである。
+// 役割が引けなかったファイルは走行を INCONCLUSIVE にするので、段位が黙って取りこぼす道はない。
+function tierScan(root) {
+  const byFeature = new Map();
+  for (const c of classifiedFiles(root)) {
+    const name = featureNameOf(c.file);
+    if (!name) continue;
+    const g = byFeature.get(name) ?? { name, hasCore: false, hasShell: false, core: null, coreLines: 0 };
+    if (c.role === "core" && !g.hasCore) {
+      const text = readFileSync(c.file, "utf8");
+      g.hasCore = true;
+      g.core = readCoreFacts(c.file, text);
+      g.coreLines = text.split(/\r?\n/).length;
+    }
+    if (c.role === "shell") g.hasShell = true;
+    byFeature.set(name, g);
+  }
+  const rank = (t) => (t === "T?" ? -1 : Number(t.slice(1)));
+  // 段位の降順、同じ段では大きい機械から。読み手の attention は「深く採用しているもの」と
+  // 「部分的なままの一番大きな機能」に先に向くべきである。名前順は最後の同値解消にだけ使う。
+  return [...byFeature.values()]
+    .map((g) => ({ name: g.name, coreLines: g.coreLines, ...judgeTier(g) }))
+    .sort((a, b) => rank(b.tier) - rank(a.tier) || b.coreLines - a.coreLines || a.name.localeCompare(b.name));
+}
+
 function runMainScan() {
   const violations = [];
   const report = [];
@@ -1224,7 +1364,11 @@ function runMainScan() {
     });
   }
 
-  return { violations, report, scannedTotal: seen.size, coverage: roleCoverage(projectRoot, perCheck) };
+  return {
+    violations, report, scannedTotal: seen.size,
+    coverage: roleCoverage(projectRoot, perCheck),
+    tiers: tierScan(projectRoot),
+  };
 }
 
 // Info checks (non-blocking): types.ts line budget / tsconfig include
@@ -1340,7 +1484,15 @@ function checkChecksTableDrift() {
 
 // ───────────────────────── L6 self-test (Verifier Self-Verification) ─────────────────────────
 // 走査対象の「配線」を検証する参照コーパス。検証器と同梱の starter を使う。
-const CORPUS = join(__dirname, "..", "starter");
+//
+// 2箇所を見るのは、verify/ をプロジェクトの中に持ち込んだ場合の置き場が違うからである。
+// この配布物では starter/ は verify/ の隣（利用者に見せるテンプレートでもあるため）だが、
+// 検証器だけをコピーして使うプロジェクトでは、利用者の src/ の隣に見慣れないテンプレートを
+// 並べるより verify/ の内側に同梱する方が正しい。**どちらでも見つかることが要点で、
+// 見つからなければ INCONCLUSIVE である**（無ければ黙って skip、では配線テストを
+// ディレクトリ1つ消すだけで外せてしまう）。
+const CORPUS_CANDIDATES = [join(__dirname, "..", "starter"), join(__dirname, "starter")];
+const CORPUS = CORPUS_CANDIDATES.find((p) => existsSync(p)) ?? CORPUS_CANDIDATES[0];
 
 // L6 の第2部: レジストリの glob が実際にファイルを選べているかを証明する。
 //
@@ -1434,6 +1586,70 @@ function runClassifierSelfTest() {
   // という静かな腐り方を塞ぐ（分類器は文字列を返すだけなので、綴り間違いも同じ穴になる）。
   for (const [, expect] of CLASSIFIER_CASES) {
     if (expect !== null && !ROLES[expect]) failures.push(`self-test failed: classifier expects role '${expect}', which ${PLATFORM_TABLE} does not define`);
+  }
+  return failures;
+}
+
+// 段位判定の自己テスト。**印字するだけの判定は、間違っていることを捕まえられなければ無価値
+// である。** 挟み方は2段構えで、どちらか片方では抜ける:
+//
+//   (a) 検体テキストに対して段位が **区別できる**。T2 の検体が T3 と報告されたら落ちる。
+//       これが無いと「常に T3 を返す判定」が通る。
+//   (b) 参照コーパスに対して、**実際の役割パスを通って** 1件以上の機能が採点でき、最上段に届く。
+//       これが無いと L6 の旧穴と同型になる —— 純関数だけをテストしていた頃、CHECKS の glob は
+//       一度も通らず、0ファイル走査でも自己テストは緑だった。判定は `> 0` であり閾値ではない。
+//
+// 段位そのものは exit code に影響しないが、**この自己テストは L6 なので落ちれば exit 1 である。**
+// 段位が壊れていることは利用者のコードの問題ではなく検証器の故障である。
+function runTierSelfTest(F, read) {
+  const facts = (name) => readCoreFacts(F(name), read(name));
+  const tierOf = (core, hasShell) => judgeTier({ hasCore: core !== null, hasShell, core }).tier;
+  const t3 = facts("tier-t3.core.ts");
+
+  const cases = [
+    { got: () => tierOf(t3, true), expect: "T3",
+      label: "tiers: a closed round trip (identified Effects + both outcome cases) is T3" },
+    // 嘘の緑が戻ってくる道。livingdoc の moderation / materialrequest がまさにこの形である。
+    { got: () => tierOf(facts("tier-t2.core.ts"), true), expect: "T2",
+      label: "tiers: Effects that carry no correlationId are T2 and must never be reported T3" },
+    // 検体ファイルを増やさずに事実だけを削る。判定が handled を本当に読んでいるかの検算。
+    { got: () => judgeTier({ hasCore: true, hasShell: true, core: { ...t3, handled: ["EFFECT_SUCCEEDED"] } }).tier,
+      expect: "T2", label: "tiers: only half the round trip handled (no EFFECT_FAILED case) is not T3" },
+    { got: () => tierOf(t3, false), expect: "T1",
+      label: "tiers: without a shell the same core is T1 — a core alone declares no Effect" },
+    { got: () => tierOf(facts("good.core.ts"), false), expect: "T1",
+      label: "tiers: a pure state machine fed by InitData, with no Effects, is T1" },
+    { got: () => tierOf(null, false), expect: "T0",
+      label: "tiers: a feature with no core.ts is T0" },
+    // 「読めなかった」が段位を名乗らないこと。L3 が unknown なメンバ1つで静かに空虚になった
+    // 穴と同型なので、ここは沈黙ではなく T? として印字されなければならない。
+    { got: () => tierOf(facts("tier-ungraded.core.ts"), true), expect: "T?",
+      label: "tiers: a core the ladder cannot grade is announced as T?, never given a tier" },
+  ];
+
+  const failures = [];
+  for (const c of cases) {
+    const got = c.got();
+    if (got !== c.expect) failures.push(`self-test failed: ${c.label}\n    expected: ${c.expect}\n    got:      ${got}`);
+  }
+
+  // (b) 参照コーパスに対する実走。CORPUS が無いときは黙って通す —— 直後の配線テストが
+  // 同じ理由で INCONCLUSIVE を出すので、緑まで走れる道はここにも無い。
+  if (existsSync(CORPUS)) {
+    const tiers = tierScan(CORPUS);
+    if (tiers.length === 0) {
+      failures.push("self-test failed: tiers — 0 features were graded in the reference corpus, so the tier pass " +
+        `is wired to nothing (${CORPUS})`);
+    }
+    const ungraded = tiers.filter((t) => t.tier === "T?");
+    if (ungraded.length > 0) {
+      failures.push(`self-test failed: tiers — the reference corpus holds ${ungraded.length} feature(s) the ladder ` +
+        `could not grade: ${ungraded.map((t) => `${t.name} (${t.why})`).join("; ")}`);
+    }
+    if (tiers.length > 0 && !tiers.some((t) => t.tier === "T3")) {
+      failures.push("self-test failed: tiers — no feature in the reference corpus reaches T3, so the top rung is " +
+        "unreachable through the real role pass. A ladder whose top rung nothing climbs cannot be caught getting it wrong.");
+    }
   }
   return failures;
 }
@@ -1675,7 +1891,7 @@ function runSelfTest() {
       failures.push(`self-test failed: ${c.label}\n    expected: ${expectedStr}\n    got:      ${actualStr}`);
     }
   }
-  return [...failures, ...runClassifierSelfTest()];
+  return [...failures, ...runClassifierSelfTest(), ...runTierSelfTest(F, read)];
 }
 
 // ───────────────────────── JSON 出力（--json）─────────────────────────
@@ -1689,7 +1905,9 @@ function emitJson(payload) {
     tool: "spacta-verify",
     // 2: `scan.checks[].roots` → `.scope`（役割で書かれたチェックはディレクトリを名乗らない）、
     //    および `roles` の追加。status "inconclusive" の原因が1つ増えた（未分類ファイル）。
-    schemaVersion: 2,
+    // 3: `tiers` の追加。**status には影響しない** —— 段位は保証ではなく保証範囲の申告であり、
+    //    消費側（garden / measure）もこれを違反として扱ってはならない。
+    schemaVersion: 3,
     projectRoot,
     selfTest: payload.selfTest,
     status: payload.status,
@@ -1699,6 +1917,10 @@ function emitJson(payload) {
     // What the walked files were understood to be. `unclassified` non-empty means this run
     // could not be green whatever the checks found: something was walked that Spacta cannot name.
     roles: payload.roles ?? null,
+    // How deep each feature actually adopted Spacta. Not a finding and never a reason to fail:
+    // a consumer that turns a tier into a task is asking a project to adopt a round trip it may
+    // not need. Read it as the scope of the green next to it.
+    tiers: payload.tiers ?? null,
     errors: (payload.errors ?? []).map(relV),
     warns: (payload.warns ?? []).map(relV),
     infos: (payload.infos ?? []).map(relV),
@@ -1766,6 +1988,40 @@ function printRoleCoverage(cov) {
   console.log("");
 }
 
+// 段位。役割カバレッジと同じ場所・同じ形で出す —— どちらも「何を、何だと分かった上で見たか」の
+// 申告であり、違反の一覧ではない。
+//
+// 注記を段ごとに置くのは、段位そのものが目的ではないからである。読み手は「T2 と書かれている」
+// ことではなく「**自分の緑が往復を含んでいない**」ことを知らなければならない。
+const TIER_NOTES = {
+  T2: [
+    "T2 features declare Effects but do not receive their results — the write-path",
+    "round trip is NOT verified for them.",
+  ],
+  T1: [
+    "T1 features declare no Effects at all: they are state machines fed by InitData, so",
+    "nothing on the write path is verified for them either.",
+  ],
+  T0: ["T0 features have no core.ts, so only L9 / L10 reach them."],
+};
+
+function printTiers(tiers) {
+  // 0件を緑の顔で通さない。「機能を採点した」と「採点する機能が無かった」は別の主張である。
+  if (tiers.length === 0) {
+    console.log("  Tiers: none — no feature was found to grade, so this green says nothing about feature depth.\n");
+    return;
+  }
+  console.log(`  Tiers: ${tiers.map((t) => `${t.name} ${t.tier}`).join(", ")}`);
+  for (const tier of ["T2", "T1", "T0"]) {
+    if (tiers.some((t) => t.tier === tier)) for (const line of TIER_NOTES[tier]) console.log(`    ${line}`);
+  }
+  // 読めなかったものは黙って段位を名乗らせない（理由まで印字する）。
+  for (const t of tiers.filter((t) => t.tier === "T?" || t.unsure)) {
+    console.log(`    ? ${t.name}: ${t.why}`);
+  }
+  console.log("    A tier states what this project adopted, not a violation: no tier changes the exit code.\n");
+}
+
 // 未分類は「違反」ではない。違反と呼ぶには「この掟に反している」と言えなければならず、役割が
 // 分からないファイルについてそれは言えない——それこそが本版の消しに来た「検査していないことを
 // 断言する」の裏返しである。よって err ではなく exit 2（＝この実行は性格づけできない）。
@@ -1804,8 +2060,13 @@ const NOT_GUARANTEED = [
   ["Judgement kept out of shell.tsx", "not checked (L10 covers components, not shells)"],
   ["Widget-local state in shared/ui staying non-domain", "not checked — by design, see L10's scope"],
   ["Effect results actually reaching Core at runtime", "partially checked — the Action receptacle is required (L3); the wiring is not traced"],
-  ["Concurrent dispatch during an in-flight Effect", "not checked — starter's drain starts from the state at entry"],
-  ["Write-path round trip in features that never adopt correlationId", "not checked — the check fires only on partial adoption"],
+  // 旧文は「starter の drain は入場時の state から始まる」と書いていた。starter に drain は
+  // もう無く、エンジンが直列化するので lost update は **構造で** 閉じている。ただしそれを
+  // verify が検算しているわけではない —— 閉じ方が変わったことと、この走行が何を見たかは別の話で、
+  // 後者を前者で言い換えると、この欄の存在意義（過大主張を止めること）が消える。
+  ["Concurrent dispatch during an in-flight Effect", "not checked here — closed by construction instead: the engine applies Actions one at a time and is the only caller of perform. verify inspects none of that"],
+  // この行が申告していた穴は、段位の印字が引き受けた。
+  ["Write-path round trip in features below T3", "not checked — the Tiers line above names which features those are"],
   ["Build order when delegating to parallel agents", "not checked — a procedure, not a property of the tree"],
   ["Presentation consistency", "info only (L8), never blocks"],
   ["Semantic correctness", "never checked"],
@@ -1892,7 +2153,7 @@ if (wiringDead === null) {
   // v0.9.1 が空スキャンに出した処方箋をここにも適用する。SKIPPED のまま緑まで走れるなら、
   // starter/ を消すだけで配線テストを黙って外せてしまう＝穴を隠す操作が可能になる。
   console.error("verify: INCONCLUSIVE — no reference corpus for the L6 wiring test.\n");
-  console.error(`  Expected a reference corpus at ${CORPUS}`);
+  console.error(`  Expected a reference corpus at ${CORPUS_CANDIDATES.join("\n  or at ")}`);
   console.error("  Without it the CHECKS registry globs are unverified: a glob that selects 0 files");
   console.error("  reports 0 violations and is indistinguishable from a law that passed.");
   console.error("  Restore starter/ next to verify/ (it ships with the verifier), or point this copy");
@@ -1972,6 +2233,7 @@ const viols = scan.violations;
 viols.push(...docsDrift.violations);
 printScanReport(scan.report);
 printRoleCoverage(scan.coverage);
+printTiers(scan.tiers);
 
 // L6 proves the verifier is not broken. This proves the verifier actually looked at something.
 // A run that walks zero files finds zero violations, and would otherwise be reported as green —
@@ -2068,6 +2330,7 @@ emitJson({
   selfTest: { ok: true, failures: [], wiring: "ok" },
   status: failed ? "red" : unclassified.length ? "inconclusive" : "green",
   scan: { total: scan.scannedTotal, checks: scan.report },
+  tiers: scan.tiers.map((t) => ({ feature: t.name, tier: t.tier, why: t.why })),
   roles: {
     platform: platform.name,
     total: scan.coverage.total,
