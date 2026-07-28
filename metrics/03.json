@@ -1,13 +1,13 @@
 {
   "target": "livingdoc",
   "repo": "livingdoc",
-  "commit": "2fec76d3b04740452ef859b5d5d63b9316bbd5ab",
+  "commit": "74f7bd2d2e1b8f52c94a3c5178a5877f15cf7d14",
   "dirty": false,
-  "featureCount": 7,
+  "featureCount": 9,
   "zones": {
     "feature": {
-      "files": 42,
-      "lines": 2727
+      "files": 52,
+      "lines": 3723
     },
     "engine": {
       "files": 2,
@@ -15,39 +15,46 @@
     },
     "contract": {
       "files": 1,
-      "lines": 209
+      "lines": 249
     },
     "sharedUi": {
       "files": 15,
-      "lines": 393
+      "lines": 401
     },
     "dataAdapter": {
       "files": 7,
-      "lines": 1061
+      "lines": 1178
     },
     "sharedOther": {
       "files": 2,
-      "lines": 103
+      "lines": 124
     },
     "framework": {
-      "files": 18,
-      "lines": 625
+      "files": 22,
+      "lines": 751
     }
   },
   "effectUnion": {
-    "members": 9,
+    "members": 12,
     "constructors": {
+      "DELETE_DRAFT": [
+        "draft"
+      ],
       "LOG": [],
       "MODERATE": [
         "moderation"
       ],
       "NAVIGATE": [
+        "draft",
         "materialrequest",
         "pageview"
       ],
       "RELOAD": [],
       "SAVE_COMMENT": [
         "pageview"
+      ],
+      "SAVE_DRAFT": [
+        "draft"
       ],
       "SAVE_MATERIAL_REQUEST": [
         "materialrequest"
@@ -56,7 +63,12 @@
         "pageview"
       ],
       "SAVE_TRACE": [
+        "draft",
         "pageview"
+      ],
+      "SET_BOOKMARK": [
+        "pageview",
+        "saved"
       ],
       "SET_VOTE": [
         "pageview"
@@ -71,7 +83,52 @@
         "app/api/admin",
         "app/api/auth/callback",
         "app/api/auth/login",
+        "app/api/bookmarks",
         "app/api/comments",
+        "app/api/drafts",
+        "app/api/material-requests",
+        "app/api/reports",
+        "app/api/traces",
+        "app/api/votes"
+      ]
+    },
+    {
+      "symbol": "readViewer",
+      "file": "shared/source/session.ts",
+      "consumers": [
+        "app",
+        "app/admin",
+        "app/m/[material]/[page]",
+        "app/request",
+        "app/saved",
+        "app/search",
+        "app/type/[type]",
+        "app/u/[username]",
+        "app/write"
+      ]
+    },
+    {
+      "symbol": "Badge",
+      "file": "shared/ui/Badge.tsx",
+      "consumers": [
+        "catalog",
+        "draft",
+        "moderation",
+        "pageview",
+        "profile",
+        "saved",
+        "search",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "readJson",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/admin",
+        "app/api/bookmarks",
+        "app/api/comments",
+        "app/api/drafts",
         "app/api/material-requests",
         "app/api/reports",
         "app/api/traces",
@@ -86,34 +143,24 @@
         "app/admin",
         "app/m/[material]",
         "app/m/[material]/[page]",
+        "app/saved",
         "app/search",
         "app/type/[type]",
         "app/u/[username]"
       ]
     },
     {
-      "symbol": "readViewer",
-      "file": "shared/source/session.ts",
+      "symbol": "readString",
+      "file": "shared/source/guard.ts",
       "consumers": [
-        "app",
-        "app/admin",
-        "app/m/[material]/[page]",
-        "app/request",
-        "app/search",
-        "app/type/[type]",
-        "app/u/[username]"
-      ]
-    },
-    {
-      "symbol": "Badge",
-      "file": "shared/ui/Badge.tsx",
-      "consumers": [
-        "catalog",
-        "moderation",
-        "pageview",
-        "profile",
-        "search",
-        "tracetype"
+        "app/api/admin",
+        "app/api/bookmarks",
+        "app/api/comments",
+        "app/api/drafts",
+        "app/api/material-requests",
+        "app/api/reports",
+        "app/api/traces",
+        "app/api/votes"
       ]
     },
     {
@@ -125,7 +172,21 @@
         "app/u/[username]",
         "catalog",
         "moderation",
-        "pageview"
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "Viewer",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "profile",
+        "saved",
+        "tracetype"
       ]
     },
     {
@@ -136,42 +197,8 @@
         "moderation",
         "pageview",
         "profile",
+        "saved",
         "search",
-        "tracetype"
-      ]
-    },
-    {
-      "symbol": "readJson",
-      "file": "shared/source/guard.ts",
-      "consumers": [
-        "app/api/admin",
-        "app/api/comments",
-        "app/api/material-requests",
-        "app/api/reports",
-        "app/api/traces",
-        "app/api/votes"
-      ]
-    },
-    {
-      "symbol": "readString",
-      "file": "shared/source/guard.ts",
-      "consumers": [
-        "app/api/admin",
-        "app/api/comments",
-        "app/api/material-requests",
-        "app/api/reports",
-        "app/api/traces",
-        "app/api/votes"
-      ]
-    },
-    {
-      "symbol": "Viewer",
-      "file": "shared/types.ts",
-      "consumers": [
-        "materialrequest",
-        "moderation",
-        "pageview",
-        "profile",
         "tracetype"
       ]
     },
@@ -179,7 +206,9 @@
       "symbol": "requirePoster",
       "file": "shared/source/guard.ts",
       "consumers": [
+        "app/api/bookmarks",
         "app/api/comments",
+        "app/api/drafts",
         "app/api/material-requests",
         "app/api/reports",
         "app/api/traces",
@@ -187,13 +216,90 @@
       ]
     },
     {
+      "symbol": "Button",
+      "file": "shared/ui/Button.tsx",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
       "symbol": "Card",
       "file": "shared/ui/Card.tsx",
       "consumers": [
         "catalog",
+        "draft",
         "materialrequest",
         "moderation",
         "pageview"
+      ]
+    },
+    {
+      "symbol": "Effect",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "Quote",
+      "file": "shared/ui/Quote.tsx",
+      "consumers": [
+        "pageview",
+        "profile",
+        "saved",
+        "search",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "TraceType",
+      "file": "shared/types.ts",
+      "consumers": [
+        "app/api/drafts",
+        "app/api/traces",
+        "draft",
+        "pageview",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "runEffect",
+      "file": "shared/runEffect.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "useSpacta",
+      "file": "shared/spacta/react.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "Avatar",
+      "file": "shared/ui/Avatar.tsx",
+      "consumers": [
+        "moderation",
+        "pageview",
+        "profile",
+        "saved"
       ]
     },
     {
@@ -207,39 +313,21 @@
       ]
     },
     {
-      "symbol": "Quote",
-      "file": "shared/ui/Quote.tsx",
+      "symbol": "TraceWithPage",
+      "file": "shared/types.ts",
       "consumers": [
-        "pageview",
         "profile",
+        "saved",
         "search",
         "tracetype"
       ]
     },
     {
-      "symbol": "Avatar",
-      "file": "shared/ui/Avatar.tsx",
-      "consumers": [
-        "moderation",
-        "pageview",
-        "profile"
-      ]
-    },
-    {
-      "symbol": "Button",
-      "file": "shared/ui/Button.tsx",
-      "consumers": [
-        "materialrequest",
-        "moderation",
-        "pageview"
-      ]
-    },
-    {
-      "symbol": "Effect",
+      "symbol": "PageSummary",
       "file": "shared/types.ts",
       "consumers": [
-        "materialrequest",
-        "moderation",
+        "catalog",
+        "draft",
         "pageview"
       ]
     },
@@ -262,21 +350,12 @@
       ]
     },
     {
-      "symbol": "TraceType",
-      "file": "shared/types.ts",
+      "symbol": "TextArea",
+      "file": "shared/ui/TextArea.tsx",
       "consumers": [
-        "app/api/traces",
-        "pageview",
-        "tracetype"
-      ]
-    },
-    {
-      "symbol": "TraceWithPage",
-      "file": "shared/types.ts",
-      "consumers": [
-        "profile",
-        "search",
-        "tracetype"
+        "draft",
+        "materialrequest",
+        "pageview"
       ]
     },
     {
@@ -285,24 +364,6 @@
       "consumers": [
         "app/api/reports",
         "app/api/votes",
-        "pageview"
-      ]
-    },
-    {
-      "symbol": "runEffect",
-      "file": "shared/runEffect.ts",
-      "consumers": [
-        "materialrequest",
-        "moderation",
-        "pageview"
-      ]
-    },
-    {
-      "symbol": "useSpacta",
-      "file": "shared/spacta/react.ts",
-      "consumers": [
-        "materialrequest",
-        "moderation",
         "pageview"
       ]
     },
@@ -331,22 +392,6 @@
       ]
     },
     {
-      "symbol": "PageSummary",
-      "file": "shared/types.ts",
-      "consumers": [
-        "catalog",
-        "pageview"
-      ]
-    },
-    {
-      "symbol": "TextArea",
-      "file": "shared/ui/TextArea.tsx",
-      "consumers": [
-        "materialrequest",
-        "pageview"
-      ]
-    },
-    {
       "symbol": "jsonCreated",
       "file": "shared/source/guard.ts",
       "consumers": [
@@ -363,6 +408,14 @@
       ]
     },
     {
+      "symbol": "pageExists",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/drafts",
+        "app/api/traces"
+      ]
+    },
+    {
       "symbol": "safeRedirect",
       "file": "shared/source/guard.ts",
       "consumers": [
@@ -376,6 +429,14 @@
       "consumers": [
         "app/api/auth/callback",
         "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "traceExists",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/bookmarks",
+        "app/api/comments"
       ]
     },
     {
@@ -429,10 +490,24 @@
       ]
     },
     {
+      "symbol": "MaterialWithPages",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft"
+      ]
+    },
+    {
       "symbol": "PageRef",
       "file": "shared/types.ts",
       "consumers": [
         "pageview"
+      ]
+    },
+    {
+      "symbol": "SavedDraft",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft"
       ]
     },
     {
@@ -471,6 +546,13 @@
       ]
     },
     {
+      "symbol": "deleteDraft",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/drafts"
+      ]
+    },
+    {
       "symbol": "devProfile",
       "file": "shared/source/github.ts",
       "consumers": [
@@ -489,6 +571,13 @@
       "file": "shared/source/github.ts",
       "consumers": [
         "app/api/auth/callback"
+      ]
+    },
+    {
+      "symbol": "getDraft",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/write"
       ]
     },
     {
@@ -569,10 +658,24 @@
       ]
     },
     {
+      "symbol": "listBookmarkedTraces",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/saved"
+      ]
+    },
+    {
       "symbol": "listMaterialRequests",
       "file": "shared/source/queries.ts",
       "consumers": [
         "app/admin"
+      ]
+    },
+    {
+      "symbol": "listMaterialsWithPages",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/write"
       ]
     },
     {
@@ -618,17 +721,17 @@
       ]
     },
     {
-      "symbol": "pageExists",
-      "file": "shared/source/mutations.ts",
-      "consumers": [
-        "app/api/traces"
-      ]
-    },
-    {
       "symbol": "requireAdmin",
       "file": "shared/source/guard.ts",
       "consumers": [
         "app/api/admin"
+      ]
+    },
+    {
+      "symbol": "saveDraft",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/drafts"
       ]
     },
     {
@@ -639,17 +742,17 @@
       ]
     },
     {
+      "symbol": "setBookmark",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/bookmarks"
+      ]
+    },
+    {
       "symbol": "setVote",
       "file": "shared/source/mutations.ts",
       "consumers": [
         "app/api/votes"
-      ]
-    },
-    {
-      "symbol": "traceExists",
-      "file": "shared/source/mutations.ts",
-      "consumers": [
-        "app/api/comments"
       ]
     },
     {
@@ -775,10 +878,12 @@
   ],
   "tiers": {
     "catalog": "T1",
+    "draft": "T3",
     "materialrequest": "T2",
     "moderation": "T2",
     "pageview": "T3",
     "profile": "T1",
+    "saved": "T3",
     "search": "T1",
     "tracetype": "T?"
   },
