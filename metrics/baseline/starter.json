@@ -1,0 +1,175 @@
+{
+  "target": "starter",
+  "repo": "spacta",
+  "commit": "395ad7f0c77bc896546738eec5909166e57bf0fc",
+  "dirty": false,
+  "featureCount": 1,
+  "zones": {
+    "feature": {
+      "files": 5,
+      "lines": 199
+    },
+    "engine": {
+      "files": 2,
+      "lines": 292
+    },
+    "contract": {
+      "files": 1,
+      "lines": 23
+    },
+    "sharedUi": {
+      "files": 4,
+      "lines": 76
+    },
+    "dataAdapter": {
+      "files": 1,
+      "lines": 13
+    },
+    "sharedOther": {
+      "files": 1,
+      "lines": 30
+    },
+    "framework": {
+      "files": 3,
+      "lines": 56
+    }
+  },
+  "effectUnion": {
+    "members": 2,
+    "constructors": {
+      "LOG": [
+        "sample"
+      ],
+      "SAVE": [
+        "sample"
+      ]
+    }
+  },
+  "spread": [
+    {
+      "symbol": "AppShell",
+      "file": "shared/ui/AppShell.tsx",
+      "consumers": [
+        "app"
+      ]
+    },
+    {
+      "symbol": "Button",
+      "file": "shared/ui/Button.tsx",
+      "consumers": [
+        "sample"
+      ]
+    },
+    {
+      "symbol": "Effect",
+      "file": "shared/types.ts",
+      "consumers": [
+        "sample"
+      ]
+    },
+    {
+      "symbol": "Panel",
+      "file": "shared/ui/Panel.tsx",
+      "consumers": [
+        "sample"
+      ]
+    },
+    {
+      "symbol": "fetchInitialCount",
+      "file": "shared/source.ts",
+      "consumers": [
+        "app"
+      ]
+    },
+    {
+      "symbol": "readNow",
+      "file": "shared/source.ts",
+      "consumers": [
+        "app"
+      ]
+    },
+    {
+      "symbol": "runEffect",
+      "file": "shared/runEffect.ts",
+      "consumers": [
+        "sample"
+      ]
+    },
+    {
+      "symbol": "useSpacta",
+      "file": "shared/spacta/react.ts",
+      "consumers": [
+        "sample"
+      ]
+    },
+    {
+      "symbol": "AppHeader",
+      "file": "shared/ui/AppHeader.tsx",
+      "consumers": []
+    },
+    {
+      "symbol": "Dispatch",
+      "file": "shared/spacta/react.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "EffectOutcome",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "EffectResult",
+      "file": "shared/types.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "EffectSource",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Mint",
+      "file": "shared/spacta/react.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Perform",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Recorder",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Runtime",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Update",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "assertNever",
+      "file": "shared/types.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "createRecorder",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "createRuntime",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    }
+  ],
+  "tiers": {
+    "sample": "T3"
+  },
+  "excluded": []
+}

@@ -6,7 +6,8 @@
   "scripts": {
     "verify": "node verify/verify.mjs starter",
     "verify:starter": "node verify/verify.mjs starter",
-    "garden": "node garden/garden.mjs starter"
+    "garden": "node garden/garden.mjs starter",
+    "measure": "node metrics/measure.mjs starter"
   },
   "devDependencies": {
     "typescript": "^5"
