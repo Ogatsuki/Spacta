@@ -15,7 +15,7 @@
 "use client";
 import { useState, useSyncExternalStore } from "react";
 import { createRuntime } from "./runtime";
-import type { EffectSource, Perform, Runtime, Update } from "./runtime";
+import type { EffectSource, Perform, Recorder, Runtime, Update } from "./runtime";
 
 /**
  * The non-determinism a Shell is allowed to hand to Core, minted fresh for one dispatch.
@@ -50,6 +50,13 @@ export function useSpacta<S, A, E extends EffectSource>(opts: {
   init: () => S;
   update: Update<S, A, E>;
   perform: Perform<E>;
+  /**
+   * Passed straight through to the engine. Nothing is recorded unless a caller builds a recorder
+   * and hands it in with the `initData` it built `init` from, which is why the production path
+   * records nothing: it does not pass one. A shell that wants a flight recording is asking for
+   * one deliberately, and it is the same recording the replay cross-check reads.
+   */
+  record?: Recorder<A>;
 }): [S, Dispatch<A>] {
   // One runtime per mounted feature instance, created on first render and kept for the life
   // of the component. `init` is pure, so building it during render costs nothing.

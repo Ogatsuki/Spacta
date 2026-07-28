@@ -70,6 +70,34 @@ export type Runtime<S, A> = {
   subscribe: (listener: () => void) => () => void;
 };
 
+/**
+ * The flight recorder: `initData`, the Actions in the order they were applied, and nothing else.
+ *
+ * There is no `S` anywhere in this type, and the absence is the whole design. A recorder that
+ * could hold a State would make the replay cross-check compare a state against itself and agree
+ * every time — it would verify nothing while looking green. What is written down is the *input*
+ * of a run, because the claim being checked is that a run can be rebuilt from that input alone:
+ * feed `initData` to `init`, fold `update` over the Actions, and the state that comes out should
+ * be the state the run actually had. Anything else in here would be the answer sheet.
+ *
+ * `initData` is handed in by the caller rather than taken from the engine because `init` is
+ * `() => S`: the engine is given a thunk and never sees the value behind it. Passing that value
+ * a second time is a deliberate act, which is the right shape for a switch that must be off
+ * unless somebody meant it.
+ *
+ * It is not a fifth membrane word. `InitData` and `Action` are two of the four that already
+ * cross; a recording is a list of them, written down.
+ */
+export type Recorder<A> = {
+  readonly initData: unknown;
+  readonly actions: (A | EffectOutcome)[];
+};
+
+/** An empty recorder. Only code that wants a recording ever calls this. */
+export function createRecorder<A>(initData: unknown): Recorder<A> {
+  return { initData, actions: [] };
+}
+
 function messageOf(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   return "Something went wrong.";
@@ -90,13 +118,22 @@ function messageOf(error: unknown): string {
  * flight overwrote the comment. Here there is nothing to overwrite — the later Action is
  * queued behind the earlier one and applied to the state the earlier one produced.
  *
- * `apply()` is also the single point where every Action meets the state, which is the seam an
- * opt-in Action-log recorder will attach to later. It is not attached yet.
+ * `apply()` is also the single point where every Action meets the state, which is where the
+ * opt-in recorder attaches — see `record` below.
  */
 export function createRuntime<S, A, E extends EffectSource>(opts: {
   init: () => S;
   update: Update<S, A, E>;
   perform: Perform<E>;
+  /**
+   * Opt-in Action log. Absent means no recording, which is what production passes.
+   *
+   * The decision is an argument rather than something this file works out for itself: there is
+   * no `process`, no `import.meta`, no notion of a development build in here, and putting one
+   * in would give the engine a platform. Whoever builds the runtime knows whether this run is
+   * being recorded; the engine only knows whether it was handed somewhere to write.
+   */
+  record?: Recorder<A>;
 }): Runtime<S, A> {
   let state = opts.init();
   const inbox: (A | EffectOutcome)[] = [];
@@ -117,7 +154,14 @@ export function createRuntime<S, A, E extends EffectSource>(opts: {
     applying = true;
     try {
       while (inbox.length > 0) {
-        const [next, effects] = opts.update(state, inbox.shift()!);
+        const action = inbox.shift()!;
+        // The recorder attaches here and only here. Every Action of every feature passes through
+        // this line on its way to `update`, so the cost of recording is O(1) in the number of
+        // features: a seventh feature adds no line to this file and none to its own. Written down
+        // before `update` runs, so an Action that makes Core throw is present in the log that
+        // reproduces the throw rather than missing from it.
+        opts.record?.actions.push(action);
+        const [next, effects] = opts.update(state, action);
         state = next;
         for (const effect of effects) queue.push(effect);
       }
