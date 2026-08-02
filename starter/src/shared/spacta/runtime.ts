@@ -27,7 +27,7 @@
  * here at all, so "I forgot the round trip" is a type error at the shell rather than silence
  * at runtime.
  */
-export type Update<S, A, E> = (state: S, action: A | EffectOutcome) => [S, E[]];
+export type Update<S, A, E, R = never> = (state: S, action: A | EffectOutcome<R>) => [S, E[]];
 
 /**
  * What an Effect must look like from the engine's side. The engine reads exactly two things
@@ -42,8 +42,17 @@ export type EffectSource = { type: string; correlationId?: string };
  * The only thing `perform` may hand back: data. No promises inside, no callbacks, nothing
  * the Core could accidentally call. This return type does not cross the membrane — the
  * engine turns it into an Action, and the Action is what crosses.
+ *
+ * `data` is typed by the feature, not here. The engine never looks inside it: `R` is passed
+ * through to the outcome Action exactly as `E` is passed through to `perform`, so the shape
+ * of an answer is described in the feature that asked the question and nowhere else. That is
+ * the whole reason it is a type parameter rather than a member of a shared union — a shared
+ * one would have to name every feature's answer in a single file, which is the coupling the
+ * Effect union already has and the one this is trying not to repeat.
+ *
+ * It defaults to `never`, so a feature that only writes says nothing about answers at all.
  */
-export type Perform<E> = (effect: E) => Promise<{ id?: string } | null | undefined>;
+export type Perform<E, R = never> = (effect: E) => Promise<{ id?: string; data?: R } | null | undefined>;
 
 /**
  * The return path of a write, as Actions.
@@ -56,16 +65,20 @@ export type Perform<E> = (effect: E) => Promise<{ id?: string } | null | undefin
  * The old shape had the loop skip those quietly, which is how two features came to receive
  * nothing at all without anybody noticing. A feature that has no use for an unidentified
  * answer now has to write that down as a case — silence becomes a sentence.
+ *
+ * `data` carries what a read answered with, and it is typed by the feature that asked. The
+ * engine never inspects it. A feature that only writes leaves `R` at its default of `never`
+ * and the field is unusable, which is the honest shape for a question that was not asked.
  */
-export type EffectOutcome =
-  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; id?: string }
+export type EffectOutcome<R = never> =
+  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; id?: string; data?: R }
   | { type: "EFFECT_FAILED"; correlationId: string | null; message: string };
 
 /** One running feature instance. The state lives in here, not in a closure. */
-export type Runtime<S, A> = {
+export type Runtime<S, A, R = never> = {
   /** The authoritative state. Identity changes only when `update` returned a new one. */
   getState: () => S;
-  dispatch: (action: A | EffectOutcome) => void;
+  dispatch: (action: A | EffectOutcome<R>) => void;
   /** Notified after a batch of Actions has been applied. Returns an unsubscribe. */
   subscribe: (listener: () => void) => () => void;
 };
@@ -88,13 +101,13 @@ export type Runtime<S, A> = {
  * It is not a fifth membrane word. `InitData` and `Action` are two of the four that already
  * cross; a recording is a list of them, written down.
  */
-export type Recorder<A> = {
+export type Recorder<A, R = never> = {
   readonly initData: unknown;
-  readonly actions: (A | EffectOutcome)[];
+  readonly actions: (A | EffectOutcome<R>)[];
 };
 
 /** An empty recorder. Only code that wants a recording ever calls this. */
-export function createRecorder<A>(initData: unknown): Recorder<A> {
+export function createRecorder<A, R = never>(initData: unknown): Recorder<A, R> {
   return { initData, actions: [] };
 }
 
@@ -121,10 +134,10 @@ function messageOf(error: unknown): string {
  * `apply()` is also the single point where every Action meets the state, which is where the
  * opt-in recorder attaches — see `record` below.
  */
-export function createRuntime<S, A, E extends EffectSource>(opts: {
+export function createRuntime<S, A, E extends EffectSource, R = never>(opts: {
   init: () => S;
-  update: Update<S, A, E>;
-  perform: Perform<E>;
+  update: Update<S, A, E, R>;
+  perform: Perform<E, R>;
   /**
    * Opt-in Action log. Absent means no recording, which is what production passes.
    *
@@ -133,10 +146,10 @@ export function createRuntime<S, A, E extends EffectSource>(opts: {
    * in would give the engine a platform. Whoever builds the runtime knows whether this run is
    * being recorded; the engine only knows whether it was handed somewhere to write.
    */
-  record?: Recorder<A>;
-}): Runtime<S, A> {
+  record?: Recorder<A, R>;
+}): Runtime<S, A, R> {
   let state = opts.init();
-  const inbox: (A | EffectOutcome)[] = [];
+  const inbox: (A | EffectOutcome<R>)[] = [];
   const queue: E[] = [];
   const listeners = new Set<() => void>();
   let applying = false;
@@ -179,10 +192,12 @@ export function createRuntime<S, A, E extends EffectSource>(opts: {
       while (queue.length > 0) {
         const effect = queue.shift()!;
         const correlationId = effect.correlationId ?? null;
-        let outcome: EffectOutcome;
+        let outcome: EffectOutcome<R>;
         try {
           const result = await opts.perform(effect); // IO is isolated in perform (L4).
-          outcome = { type: "EFFECT_SUCCEEDED", correlationId, id: result?.id };
+          // `data` rides along untouched. `JSON.stringify` drops it when it is undefined, so a
+          // feature that answers with nothing records exactly the session it recorded before.
+          outcome = { type: "EFFECT_SUCCEEDED", correlationId, id: result?.id, data: result?.data };
         } catch (error) {
           outcome = { type: "EFFECT_FAILED", correlationId, message: messageOf(error) };
         }

@@ -43,24 +43,24 @@ function mint(): Mint {
  * remains after it is JSX wiring — state into props, callbacks into `dispatch` — which is
  * the only part of a shell that is about the feature.
  *
- * `update` is typed `Update<S, A, E>`, whose action parameter is `A | EffectOutcome`; a
+ * `update` is typed `Update<S, A, E, R>`, whose action parameter is `A | EffectOutcome<R>`; a
  * feature whose `Action` union has no place for the answer to a write will not compile here.
  */
-export function useSpacta<S, A, E extends EffectSource>(opts: {
+export function useSpacta<S, A, E extends EffectSource, R = never>(opts: {
   init: () => S;
-  update: Update<S, A, E>;
-  perform: Perform<E>;
+  update: Update<S, A, E, R>;
+  perform: Perform<E, R>;
   /**
    * Passed straight through to the engine. Nothing is recorded unless a caller builds a recorder
    * and hands it in with the `initData` it built `init` from, which is why the production path
    * records nothing: it does not pass one. A shell that wants a flight recording is asking for
    * one deliberately, and it is the same recording the replay cross-check reads.
    */
-  record?: Recorder<A>;
+  record?: Recorder<A, R>;
 }): [S, Dispatch<A>] {
   // One runtime per mounted feature instance, created on first render and kept for the life
   // of the component. `init` is pure, so building it during render costs nothing.
-  const [runtime] = useState<Runtime<S, A>>(() => createRuntime(opts));
+  const [runtime] = useState<Runtime<S, A, R>>(() => createRuntime(opts));
 
   // The engine is an external store: it owns the state, React only reads it. The server
   // snapshot is the same function because `init(initData)` is deterministic — the whole

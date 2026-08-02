@@ -334,6 +334,100 @@ assertEqual(strayOk, modOk, "an outcome for a command that was never recorded ch
 const strayFail = moderation.update(modOk, { type: "EFFECT_FAILED", correlationId: "c_never", message: "boom" })[0];
 assertEqual(strayFail, modOk, "an outcome for a command that was never recorded changes nothing (failure)");
 
+// ───────────────────────── 7. an Effect may answer with data, not only an id ──────────────
+// v0.11. Until now `perform` could hand back `{ id }` and nothing else, so a feature could
+// write but never read: the only way more data reached a screen was a fresh `InitData`, which
+// means a navigation or a reload. `R` threads an answer shape from the feature through the
+// engine and back into an Action — and the engine still never looks inside it, exactly as it
+// never looks inside `E`. The point of a type parameter rather than a shared union is that
+// nothing about this feature's answer is written down anywhere but this feature.
+//
+// A type parameter nothing exercises is a type parameter that compiles and does not work, so
+// what is asserted here is that the value arrives.
+
+const readInit = () => ({ items: [], cursor: "0", loading: false, note: "" });
+
+function readUpdate(state, action) {
+  switch (action.type) {
+    case "LOAD_MORE":
+      return [
+        { ...state, loading: true },
+        [{ type: "FETCH", correlationId: action.correlationId, cursor: state.cursor }],
+      ];
+    case "EFFECT_SUCCEEDED":
+      // The answer arrives as data on an Action — the same road every other value takes across
+      // the membrane. Core reads it; Core did not fetch it.
+      return [
+        {
+          ...state,
+          items: [...state.items, ...(action.data?.items ?? [])],
+          cursor: action.data?.cursor ?? state.cursor,
+          loading: false,
+        },
+        [],
+      ];
+    case "EFFECT_FAILED":
+      return [{ ...state, loading: false, note: action.message }, []];
+    default:
+      throw new Error(`unhandled action: ${action.type}`);
+  }
+}
+
+async function readRun(answer) {
+  const runtime = createRuntime({
+    init: readInit,
+    update: readUpdate,
+    perform: async (effect) => {
+      if (answer === "fail") throw new Error("Request failed (500)");
+      return { data: { items: [`from:${effect.cursor}`], cursor: String(Number(effect.cursor) + 1) } };
+    },
+  });
+  runtime.dispatch({ type: "LOAD_MORE", correlationId: "r1" });
+  await sleep(20);
+  runtime.dispatch({ type: "LOAD_MORE", correlationId: "r2" });
+  await sleep(20);
+  return runtime.getState();
+}
+
+console.log("\nengine — an Effect that answers with data:");
+
+const read = await readRun("ok");
+assertEqual(read.items, ["from:0", "from:1"], "the data an Effect answered with reaches Core");
+assertEqual(read.cursor, "2", "and a second read starts from where the first one left off");
+assertEqual(read.loading, false, "the answer is what ends the load, not a timer");
+
+const readFailed = await readRun("fail");
+assertEqual(readFailed.items, [], "a failed read adds nothing");
+assertEqual(readFailed.note, "Request failed (500)", "and says why, through the same outcome Action");
+
+// The recorder must carry the answer too, or a replay would rebuild a run that never received
+// it — the flight recorder would describe a screen the user did not see.
+const readRecorder = createRecorder({ seed: "read" });
+const recordedRead = createRuntime({
+  init: readInit,
+  update: readUpdate,
+  perform: async () => ({ data: { items: ["recorded"], cursor: "9" } }),
+  record: readRecorder,
+});
+recordedRead.dispatch({ type: "LOAD_MORE", correlationId: "r1" });
+await sleep(20);
+assertEqual(
+  readRecorder.actions.map((a) => a.type),
+  ["LOAD_MORE", "EFFECT_SUCCEEDED"],
+  "a read is recorded as the question and the answer, both as Actions",
+);
+assertEqual(
+  readRecorder.actions[1].data,
+  { items: ["recorded"], cursor: "9" },
+  "and the answer's data is in the log, because a replay cannot re-fetch it",
+);
+const replayedRead = readRecorder.actions.reduce((s, a) => readUpdate(s, a)[0], readInit());
+assertEqual(
+  replayedRead.items,
+  ["recorded"],
+  "folding update over the recorded Actions rebuilds the run — a read replays like anything else",
+);
+
 console.log(`\nengine — the source and its ${engineCopies.length - 1} copies:`);
 assert(identical("runtime.ts"), "runtime.ts matches engine/runtime.ts everywhere it lands");
 assert(identical("react.ts"), "react.ts matches engine/react.ts everywhere it lands");
