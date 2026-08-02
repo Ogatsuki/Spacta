@@ -464,6 +464,68 @@ export function checkCrossFeatureImport(file, text, featureName) {
 
 // ───────────────────────── L4 effect-runtime (Exhaustiveness) ─────────────────────────
 // If there is a switch statement using effect.type as the discriminant but it lacks assertNever/:never termination, it violates exhaustiveness.
+const isEffectTypeSwitch = (n) =>
+  ts.isSwitchStatement(n) &&
+  ts.isPropertyAccessExpression(n.expression) &&
+  ts.isIdentifier(n.expression.expression) &&
+  /effect/i.test(n.expression.expression.text) &&
+  n.expression.name.text === "type";
+
+/** Does this return type annotation leave room for a function to fall off the end? */
+function admitsUndefined(typeNode) {
+  let found = false;
+  const walk = (n) => {
+    if (!n || found) return;
+    const k = n.kind;
+    if (k === ts.SyntaxKind.UndefinedKeyword || k === ts.SyntaxKind.VoidKeyword ||
+        k === ts.SyntaxKind.AnyKeyword || k === ts.SyntaxKind.UnknownKeyword) {
+      found = true;
+      return;
+    }
+    n.forEachChild(walk);
+  };
+  walk(typeNode);
+  return found;
+}
+
+/**
+ * The second way a switch on `effect.type` can be exhaustive, and the only one available to a
+ * feature whose Effect has a single member.
+ *
+ * `assertNever` needs a union of two or more: TypeScript collapses a one-element union, so
+ * `const _: never = effect` does not compile when a feature declares exactly one Effect —
+ * which feature-local `perform` functions make ordinary. (The old shape never met it: there
+ * was one switch in the application and it had thirteen members.)
+ *
+ * A switch with no `default`, written as the last statement of a function whose declared return
+ * type cannot be `undefined`, is checked by tsc instead: add a member the switch does not
+ * handle and the function can complete without returning, which is TS2366. The guarantee is
+ * the same one — a forgotten Effect is a compile error, not silence — carried by the return
+ * type rather than by a `never`.
+ *
+ * All three conditions are load-bearing. Without "no default", the default swallows. Without
+ * "last statement", a `return null` after the switch swallows and TS2366 never fires. Without
+ * a return type that excludes `undefined`, falling off the end is legal and TS2366 never
+ * fires either. The annotation is read syntactically and conservatively: `undefined`, `void`,
+ * `any` or `unknown` appearing anywhere inside it disqualifies the form.
+ */
+function everyEffectSwitchClosedByReturnType(sf) {
+  let switches = 0;
+  let closed = 0;
+  eachNode(sf, (n) => {
+    if (isEffectTypeSwitch(n)) switches += 1;
+    const isFn = ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) ||
+      ts.isArrowFunction(n) || ts.isMethodDeclaration(n);
+    if (!isFn || !n.body || !ts.isBlock(n.body) || !n.type) return;
+    if (admitsUndefined(n.type)) return;
+    const last = n.body.statements[n.body.statements.length - 1];
+    if (!last || !isEffectTypeSwitch(last)) return;
+    if (last.caseBlock.clauses.some((c) => ts.isDefaultClause(c))) return;
+    closed += 1;
+  });
+  return switches > 0 && closed === switches;
+}
+
 export function checkEffectRuntime(file, text) {
   const sf = parse(file, text);
   const out = [];
@@ -471,17 +533,9 @@ export function checkEffectRuntime(file, text) {
   let switchLoc = { line: 0, col: 0 };
   let hasNever = false; // Evaluated via AST (not fooled by comments containing ": never")
   eachNode(sf, (n) => {
-    if (ts.isSwitchStatement(n)) {
-      const expr = n.expression;
-      const isEffectType =
-        ts.isPropertyAccessExpression(expr) &&
-        ts.isIdentifier(expr.expression) &&
-        /effect/i.test(expr.expression.text) &&
-        expr.name.text === "type";
-      if (isEffectType) {
-        hasEffectSwitch = true;
-        switchLoc = locOf(sf, n);
-      }
+    if (isEffectTypeSwitch(n)) {
+      hasEffectSwitch = true;
+      switchLoc = locOf(sf, n);
     }
     // never type annotation (e.g. const _exhaustive: never = ...)
     if (n.kind === ts.SyntaxKind.NeverKeyword) hasNever = true;
@@ -489,9 +543,9 @@ export function checkEffectRuntime(file, text) {
     if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === "assertNever") hasNever = true;
   });
   if (!hasEffectSwitch) return out; // OK if routing through shared runEffect
-  if (!hasNever) {
+  if (!hasNever && !everyEffectSwitchClosedByReturnType(sf)) {
     out.push(V(file, switchLoc.line, switchLoc.col, "L4",
-      "Handwritten switch on effect.type lacks exhaustiveness check (assertNever or ': never'). Effect additions might be silently ignored. Use the shared runEffect runtime or add never termination."));
+      "Handwritten switch on effect.type lacks exhaustiveness termination. Add `assertNever` / a `: never` assignment, or — when the Effect has a single member and `never` cannot be written — make the switch the last statement of a function whose declared return type excludes `undefined`, so tsc reports TS2366 when a member is added."));
   }
   return out;
 }
@@ -1745,6 +1799,28 @@ function runSelfTest() {
         { rule: "L4", line: 7 }
       ],
       label: "L4 rejects handwritten switch lacking exhaustiveness check"
+    },
+    // The second termination form, and the three conditions that make it a guarantee rather
+    // than a loophole. Each bad specimen removes exactly one of them; if any of these three
+    // starts passing, the form has become a way to write a switch nothing checks.
+    {
+      exec: () => checkEffectRuntime(F("good-perform-single.ts"), read("good-perform-single.ts")),
+      expect: [],
+      label: "L4 accepts a default-less switch that is the last statement of a function returning no undefined"
+    },
+    {
+      exec: () => checkEffectRuntime(F("bad-perform-fallthrough.ts"), read("bad-perform-fallthrough.ts")),
+      expect: [
+        { rule: "L4", line: 12 }
+      ],
+      label: "L4 still rejects it when a statement follows the switch — TS2366 can never fire there"
+    },
+    {
+      exec: () => checkEffectRuntime(F("bad-perform-untyped.ts"), read("bad-perform-untyped.ts")),
+      expect: [
+        { rule: "L4", line: 11 }
+      ],
+      label: "L4 still rejects it without a return type annotation — the inferred one admits undefined"
     },
     {
       exec: () => checkSharedReverseDependency(F("bad-shared-import.shared.ts"), read("bad-shared-import.shared.ts")),

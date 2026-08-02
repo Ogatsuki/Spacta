@@ -308,34 +308,38 @@ const contractRel = "src/shared/types.ts";
 const contractAbs = join(targetRoot, "src", "shared", "types.ts");
 if (!existsSync(contractAbs)) {
   die(`the shared contract ${contractRel} does not exist in ${targetRoot}`, [
-    "The membrane vocabulary is measured off that one file; without it there is no Effect union to count.",
+    "The membrane vocabulary is measured off it and off each feature; without it there is no",
+    "contract zone to measure at all.",
   ]);
 }
 
-const contractSf = sourceFile(contractAbs);
-let effectAlias = null;
-eachNode(contractSf, (n) => {
-  if (ts.isTypeAliasDeclaration(n) && n.name.text === "Effect") effectAlias = n;
-});
-if (!effectAlias) {
-  die(`no \`Effect\` type alias was found in ${contractRel}`, [
-    "effectUnion measures the membrane vocabulary declared there. A renamed or moved Effect union is a",
-    "change to the contract, not something to guess at.",
-  ]);
+// v0.11 以降、`Effect` union は1箇所ではない。機能は自分の Effect を自分の types.ts で宣言し、
+// 共有契約に残るのは2機能以上が本当に共有するものだけである。したがって測るのは「union の
+// メンバ数」ではなく **どこで何メンバ宣言されているか** になった。
+//
+// 数を1つに畳まないのは意図的である。共有に1メンバ残っているのと、機能ローカルに12メンバ
+// 散っているのとは、同じ「12」でも意味が正反対になる。畳めば傾きが読めなくなる。
+function effectAliasIn(abs) {
+  if (!existsSync(abs)) return null;
+  let alias = null;
+  eachNode(sourceFile(abs), (n) => {
+    if (ts.isTypeAliasDeclaration(n) && n.name.text === "Effect") alias = n;
+  });
+  return alias;
 }
 
-const unionMembers = (ts.isUnionTypeNode(effectAlias.type) ? effectAlias.type.types : [effectAlias.type])
-  .map((t) => (ts.isParenthesizedTypeNode(t) ? t.type : t));
-const literalMembers = unionMembers.filter((t) => ts.isTypeLiteralNode(t));
-if (literalMembers.length !== unionMembers.length) {
-  die(`the \`Effect\` union in ${contractRel} has ${unionMembers.length - literalMembers.length} member(s) that are not object types`, [
-    "Members are read as object types with a string-literal tag; anything else cannot be tagged, counted,",
-    "or matched against a construction site. Report the shape instead of half-measuring it.",
-  ]);
+// 宣言の在処: 共有契約と、各機能の types.ts。機能名は zones と同じ ownerOf で引く。
+const declSites = [{ where: contractRel, abs: contractAbs }];
+for (const f of files) {
+  if (!/^src\/features\/[^/]+\/types\.ts$/.test(f.rel)) continue;
+  declSites.push({ where: ownerOf(f.rel) ?? f.rel, abs: f.abs });
 }
 
-// 判別プロパティを union 自身から決める。「全メンバが持ち、値がすべて異なる文字列リテラル」
-// の候補のうちアルファベット順で最初のもの（実際には `type`）。名前を決め打ちしない。
+const memberFields = new Map(); // tag -> Set(field names)
+const declaredIn = {};          // where -> メンバ数
+const tagSites = new Map();     // tag -> Set(where)  … 重複宣言を数えるため
+let tagProp = null;
+
 function literalProps(member) {
   const out = new Map();
   for (const m of member.members) {
@@ -348,26 +352,49 @@ const propNames = (member) => member.members
   .filter((m) => m.name && (ts.isIdentifier(m.name) || ts.isStringLiteral(m.name)))
   .map((m) => m.name.text);
 
-const candidates = [...new Set(literalMembers.flatMap((m) => [...literalProps(m).keys()]))].sort().filter((name) => {
-  const values = literalMembers.map((m) => literalProps(m).get(name));
-  return values.every((v) => v !== undefined) && new Set(values).size === values.length;
-});
-if (candidates.length === 0) {
-  die(`the members of the \`Effect\` union in ${contractRel} share no discriminant`, [
-    "A tagged union is what makes a member nameable and a construction site findable.",
+for (const site of declSites) {
+  const alias = effectAliasIn(site.abs);
+  if (!alias) continue; // 共有契約に Effect が無いのは v0.11 では正常。機能に無いのも同じ。
+  const unionMembers = (ts.isUnionTypeNode(alias.type) ? alias.type.types : [alias.type])
+    .map((t) => (ts.isParenthesizedTypeNode(t) ? t.type : t));
+  const literalMembers = unionMembers.filter((t) => ts.isTypeLiteralNode(t));
+  if (literalMembers.length !== unionMembers.length) {
+    die(`the \`Effect\` union in ${site.where} has ${unionMembers.length - literalMembers.length} member(s) that are not object types`, [
+      "Members are read as object types with a string-literal tag; anything else cannot be tagged, counted,",
+      "or matched against a construction site. Report the shape instead of half-measuring it.",
+    ]);
+  }
+  const candidates = [...new Set(literalMembers.flatMap((m) => [...literalProps(m).keys()]))].sort().filter((name) => {
+    const values = literalMembers.map((m) => literalProps(m).get(name));
+    return values.every((v) => v !== undefined) && new Set(values).size === values.length;
+  });
+  if (candidates.length === 0) {
+    die(`the members of the \`Effect\` union in ${site.where} share no discriminant`, [
+      "A tagged union is what makes a member nameable and a construction site findable.",
+    ]);
+  }
+  if (tagProp !== null && candidates[0] !== tagProp) {
+    die(`${site.where} tags its Effects with \`${candidates[0]}\` while another declaration uses \`${tagProp}\``, [
+      "Two discriminants means two vocabularies wearing one name. Report it rather than pick one.",
+    ]);
+  }
+  tagProp = candidates[0];
+  declaredIn[site.where] = literalMembers.length;
+  for (const m of literalMembers) {
+    const tag = literalProps(m).get(tagProp);
+    memberFields.set(tag, new Set([...(memberFields.get(tag) ?? []), ...propNames(m)]));
+    tagSites.set(tag, new Set([...(tagSites.get(tag) ?? []), site.where]));
+  }
+}
+if (memberFields.size === 0) {
+  die("no \`Effect\` type alias was found in the shared contract or in any feature", [
+    "effectUnion measures the membrane vocabulary. A renamed or moved Effect union is a change to",
+    "the contract, not something to guess at.",
   ]);
 }
-const tagProp = candidates[0];
 
-const memberFields = new Map(); // tag -> Set(field names)
-for (const m of literalMembers) memberFields.set(literalProps(m).get(tagProp), new Set(propNames(m)));
-
-// 構築点の探索は**測定ゾーン全体**を歩く。機能の中で構築されたものは機能名になり、共有や
-// app router で構築されたものはそのパスで現れる。「機能しか構築しないはずだ」を仮定して
-// 機能だけ歩くと、仮定が破れた日に出力が黙る。
 const constructors = new Map([...memberFields.keys()].map((tag) => [tag, new Set()]));
 for (const f of files) {
-  // 共有予算の中で構築されていたら、機能名の代わりにそのパスで現れる（spread の `file` と同じ書き方）。
   const owner = ownerOf(f.rel) ?? f.rel.replace(/^src\//, "");
   eachNode(sourceFile(f.abs), (n) => {
     if (!ts.isObjectLiteralExpression(n)) return;
@@ -380,15 +407,24 @@ for (const f of files) {
     }
     if (tag === null || !memberFields.has(tag)) return;
     const fields = memberFields.get(tag);
-    if (!written.every((w) => fields.has(w))) return; // 同名の別語彙（Action 等）
+    if (!written.every((w) => fields.has(w))) return;
     constructors.get(tag).add(owner);
   });
 }
 
-// キーはタグのアルファベット順、値も同順。宣言順ではなくアルファベット順にするのは、
-// 契約の並べ替えで diff が動かないようにするため。
+// 重複宣言 = 「結合より重複を選んだ」ことの値段。共有をやめた代わりに何行増えたのかを、
+// 印象ではなく数で残す。ゼロに戻すべき数ではない —— 読むための数である。
+const duplicated = Object.fromEntries(
+  [...tagSites.keys()].sort()
+    .filter((tag) => tagSites.get(tag).size > 1)
+    .map((tag) => [tag, [...tagSites.get(tag)].sort()]),
+);
+
 const effectUnion = {
   members: memberFields.size,
+  shared: declaredIn[contractRel] ?? 0,
+  declaredIn: Object.fromEntries(Object.keys(declaredIn).sort().map((k) => [k, declaredIn[k]])),
+  duplicated,
   constructors: Object.fromEntries([...constructors.keys()].sort().map((tag) => [tag, [...constructors.get(tag)].sort()])),
 };
 
