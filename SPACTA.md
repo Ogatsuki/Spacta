@@ -24,7 +24,7 @@ Side effects (network, time, random numbers, DOM rendering) never cross the memb
 | L1 | **Isolation**: Features must not import the internals of other features. | `verify` cross-feature-imports (AST) |
 | L2 | **Purity**: Do not include IO in `*/core.ts` (`async`/`await`/`new Date`/`Date.now`/`Math.random`/`fetch`/`prisma`/`window`/`document`/`localStorage`). | `verify` core-purity (AST) |
 | L3 | **Injection**: Pass non-determinism (time, random, IDs) as values in `InitData` or `Action` — **including values that come back from IO** (server-assigned IDs, failures). Do not generate them inside the Core. | Inbound: L2 / L9. Outbound: **structure, not inspection** — the runtime in `shared/spacta` is the only caller of `runEffect`, and it turns *every* outcome into an Action unconditionally, so no code path can drop one. `update` receives `Action \| EffectOutcome`, so tsc rejects a feature with no place for the answer, and the exhaustiveness guard then forces a case for it. `verify` effect-return still requires the receptacle to exist. |
-| L4 | **Exhaustiveness**: Switch blocks on `effect.type` must terminate with an exhaustiveness check (`assertNever` / `: never`). Features do not switch on `effect.type` at all — not because it is untidy, but because the runtime is the only dispatch point and `shared/runEffect.ts` is the only place an Effect becomes IO. | `verify` effect-runtime (AST, all of `src/**` — including `shared/runEffect.ts`) |
+| L4 | **Exhaustiveness**: Switch blocks on `effect.type` must terminate with an exhaustiveness check (`assertNever` / `: never`). Features do not switch on `effect.type` at all — not because it is untidy, but because the runtime is the only dispatch point and `shared/runEffect.ts` is the only place an Effect leaves the app. The store itself is further out — behind that call, in `app/api/**` and `shared/source/*` — and §3 says why Spacta does not follow it there. | `verify` effect-runtime (AST, all of `src/**` — including `shared/runEffect.ts`) |
 | L5 | **Source Purity**: Server boundaries and the frames around them should only perform fetch/persistence, delegating aggregation/formatting to Core pure functions. Do not generate non-deterministic values (time, random, IDs) here; inject them. A value **returned by** IO (a DB-assigned id) is a Source read, not generation (L3). | `verify` source-purity (AST. ID/Time generation is `err`, `.reduce()` aggregation is `warn`) |
 | L6 | **Verifier Self-Verification**: The verifier must **always reject** known violations planted in `verify/fixtures/`. | `verify` self-test (Meta-level protection) |
 | L7 | **Reverse Dependency Prevention**: The shared layer (`shared/*`) must not import the internals of the feature layer (`features/*`). | `verify` shared-features-isolation (AST) |
@@ -55,6 +55,16 @@ Details of the Form and Judgment are decided contextually by you. The primary me
 *   **What remains in a shell is JSX wiring: state into props, callbacks into `dispatch`. Nothing else.** The mechanism a shell used to carry — holding state, minting `now` and ids, looping over Effects — belongs to the runtime and its React adapter (`shared/spacta`). Do not write `useState` for feature state, `new Date()` or `crypto.randomUUID()` in a feature: call `useSpacta` and let it mint. Non-determinism still reaches Core as Action values (L3); what changed is only who mints it.
 *   Move all pure judgments (save triggers, status transitions, threshold checks) from `shell.tsx` into pure functions in `core.ts`.
 *   Once thin, you may split display elements into sibling files under `components/`. Do not create grandchild components.
+
+---
+
+## §3 Scope — What Spacta Does Not Govern
+
+Spacta governs how one screen behaves after it has loaded. Some things are deliberately outside that, and knowing which is which saves you from hunting for a rule that does not exist.
+
+*   **Fetching and persistence are not Spacta's.** `shared/source/*` is imported by `app/**` — the server boundary — and by nothing else; no feature imports it. Data reaches a feature as `InitData`, once, at `init()`. Two features reading the same table are coupled, and no Law here sees that coupling. It is a declared hole rather than an oversight: `npm run measure` reports the `spread` of each shared symbol so the hole stays countable.
+*   **An Effect brings back an id, not data.** A feature cannot fetch after the page has loaded. More data arrives as a new `InitData` — a navigation, or a reload — never as the answer to an Effect.
+*   **One feature instance performs one Effect at a time.** The runtime serializes: an Action dispatched while an Effect is in flight waits behind it and is never applied to a stale state. That is what makes a run reproducible from `(initData, actions[])`, and it is paid for in concurrency — two independent writes from the same feature do not overlap.
 
 ---
 
