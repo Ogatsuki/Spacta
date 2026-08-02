@@ -94,10 +94,12 @@ So every run prints a **tier per feature**, in the same place and shape as the r
 | Tier | Condition | What the green then covers |
 |---|---|---|
 | `T0` | No `core.ts` — `page.tsx` → `components/` only | L9 / L10 only |
-| `T1` | `core.ts` receiving an `InitData` (a pure state machine) | + L2 / L3 inbound |
-| `T2` | `+ shell.tsx`, and `core.ts` declares or builds an Effect | + L1 / L4 |
+| `T1` | `core.ts` exists and is pure. An `InitData` parameter is usual but not required | + L2 / L3 inbound |
+| `T2` | `+ shell.tsx`, and `core.ts` declares or builds an Effect (and receives an `InitData`) | + L1 / L4 |
 | `T3` | `+` the round trip: its Effects carry a `correlationId` **and** `core.ts` handles `EFFECT_SUCCEEDED` / `EFFECT_FAILED` | + L3 outbound |
-| `T?` | A `core.ts` the ladder could not grade — printed with the reason | unstated, deliberately |
+| `T?` | A `shell.tsx` exists but the state machine could not be read — printed with the reason | unstated, deliberately |
+
+**`T1` does not require an `InitData`, and that is a correction made in v0.11.** A read-only screen needs no state machine: its `core.ts` may hold nothing but pure helpers — parsing a route parameter, choosing a label — and such a feature broke no rule yet used to land in `T?`, because the ladder tested for `InitData` before it tested for a shell. That was a hole in the ladder, not a defect in the feature; it was found by a real feature (`tracetype`) rather than by inspection. What enforces the inbound half of L3 is L2 and L9, and those reach a helper-only `core.ts` just as far. A missing `InitData` is not an unchecked injection — it is the absence of anything to inject. The requirement now applies only once a `shell.tsx` exists, because a shell means there is state and there are Effects, and a state machine that cannot be read *there* really is ungraded. That is what `T?` is now reserved for.
 
 What is inspected is syntax in the feature's own `core.ts`, plus the roles of its files (`core`, `shell`) as the platform table names them — no filename is spelled out here, and no type is resolved across modules. The `Effect` construction sites are found **by position**: the object literals directly inside the second element of a returned `[state, [ … ]]` tuple. Recognising "any object literal with a `type` property" instead would count things that are not Effects — `pending: [{ correlationId, kind, tempId }]` in a real `core.ts` would make "carries an identifier" true everywhere and collapse the T2/T3 distinction.
 
@@ -189,7 +191,7 @@ The fix was to change to AST-based evaluation (inspecting for `NeverKeyword` nod
 - **L8 is a heuristic based on color sets**. It flags grayscales and color+opacity, while allowing status colors and semantic tokens. It is not perfect and can miss new Tailwind aliases, acting purely as an **info/burn-in**. True UI alignment (fonts, rounded corners, overall feel) lies outside color tokens, handled by the `frontend-design` skill / human reviews.
 - **Clone detection is a heuristic (Jaccard similarity ≥ 0.9, token count ≥ 5)**. It compares the set of "child tag names + className tokens" for root JSX elements. Since it compares classNames as sets, **it is unaffected by Tailwind class ordering**. Child JSX returned by `.map()` is excluded from parent comparison to avoid false nesting duplicates. It merely flags **suspected** duplications as info. Deciding whether to dry up duplication is left to the gardener/human.
 - **L3 `effect-return` checks the receptacle, not the round trip**. It proves the feature *declares* an Action able to receive an Effect's answer; it does not trace that the Shell actually dispatches it, nor that Core does anything useful with it. It is also opt-in by construction: a feature that never puts a `correlationId` on an Effect is never examined, so a project that never adopts the pattern stays green with zero write-path guarantees. Both facts are printed in the trust boundary. Deliberate false negatives, chosen because a false positive here is worse: if the `Action` union cannot be found next to `core.ts`, or a union member resolves to a type the checker cannot read, it reports nothing.
-- **A tier is read off syntax, so it can only understate.** It sees a feature's own `core.ts` and the roles of its files: a parameter typed `*InitData`, a return type mentioning `Effect[]`, the object literals in the effects slot of a returned tuple, and the `case` labels of a `switch` on `action.type`. Effects assembled by a helper and returned as a variable are not seen as construction sites, so such a feature reports `T2` (with the reason printed) rather than `T3` — the ladder never invents a rung it could not read, and `T?` exists for the case where it could not read the first one either. It does not trace that a `correlationId` actually reaches the server or comes back: that is the runtime's job, and `NOT guaranteed by this green` still says so.
+- **A tier is read off syntax, so it can only understate.** It sees a feature's own `core.ts` and the roles of its files: a parameter typed `*InitData`, a return type mentioning `Effect[]`, the object literals in the effects slot of a returned tuple, and the `case` labels of a `switch` on `action.type`. Effects assembled by a helper and returned as a variable are not seen as construction sites, so such a feature reports `T2` (with the reason printed) rather than `T3` — the ladder never invents a rung it could not read, and `T?` exists for the feature that has a shell yet no readable state machine. It does not trace that a `correlationId` actually reaches the server or comes back: that is the runtime's job, and `NOT guaranteed by this green` still says so.
 - **Does not check semantic intent**. Green `verify` does not guarantee the app behaves correctly. It only ensures borders aren't broken and the structure is clean (`SPACTA.md` §4.5).
 - Designed as a custom AST script to avoid dependencies on ESLint flat config (which broke due to circular references in the benchmark project). In production, you can replace this with dependency-cruiser, etc. (`SPACTA.md` §2).
 
@@ -218,8 +220,9 @@ verify/
     tier-t2.core.ts          Tiers: Effects declared, none carrying a correlationId, both outcome cases
                                     present (tsc forces those). Must never be reported T3 — this is the
                                     shape of the false green the tier printing exists to remove
-    tier-ungraded.core.ts    Tiers: everything except a parameter typed *InitData, so the ladder's first rung
-                                    cannot be read. Must print T? with a reason, never a guessed tier
+    tier-ungraded.core.ts    Tiers: everything except a parameter typed *InitData. With a shell it must print
+                                    T? and a reason, never a guessed tier; without one it must be T1, because
+                                    a missing InitData only matters once a shell says there is state to feed
     bad-cross-import.ts      L1: Imports adjacent feature (should be rejected)
     bad-shell-switch.shell.tsx  L4: Handwritten switch without exhaustiveness termination (should be rejected)
     bad-shared-import.shared.ts L7: Shared importing a feature (should be rejected)

@@ -1207,10 +1207,14 @@ function roleCoverage(root, perCheck) {
 // 部分的に採用した利用者が受け取るのは「動いていない安心」である。それは穴より悪い。
 //
 //   T0  core.ts が無い（page.tsx → components/ だけ）              … L9 / L10 だけ
-//   T1  + core.ts があり InitData を受ける                          … + L2 / L3(inbound)
-//   T2  + shell.tsx があり Effect を宣言する                        … + L1 / L4
+//   T1  + core.ts がある（純粋。InitData を受けるかは問わない）      … + L2 / L3(inbound)
+//   T2  + shell.tsx があり Effect を宣言する（core は InitData を受ける）… + L1 / L4
 //   T3  + 往復（Effect が識別子を運び、core が outcome を処理する）  … + L3(outbound)
-//   T?  core.ts はあるが梯子のどの段とも言えない（＝採点できなかった。黙って段位を与えない）
+//   T?  shell はあるのに状態機械が読めない（＝採点できなかった。黙って段位を与えない）
+//
+// **T1 が InitData を要求しないのは v0.11 の訂正である。** 読み取り専用の画面は状態機械を
+// 必要とせず、その core.ts は純関数だけを持つ。それを T? に落としていたのは梯子の穴であって
+// 実装の誤りではなかった（測定 t1 の `tracetype`）。詳細は judgeTier のコメント。
 //
 // **段位は Law ではない。** CHECKS に載せないのは意図的である —— 載せれば promise を持って
 // 「Guaranteed by this green」に並ぶが、段位は保証ではなく **保証の範囲の申告** だからである。
@@ -1295,10 +1299,25 @@ export function judgeTier(f) {
   if (!f.hasCore) return { tier: "T0", why: "no core.ts — page and components only" };
   const c = f.core;
   if (!c) return { tier: "T?", why: "core.ts could not be read" };
-  if (!c.initData) {
-    return { tier: "T?", why: "core.ts takes no parameter typed *InitData, so the inbound half of L3 cannot be read off it" };
+  // 1段目は「core.ts があり、L2 がそれを走査している」であって「InitData を受ける」ではない。
+  // 読み取り専用の画面は状態機械を必要とせず、その core.ts は型のパースやラベル付けのような
+  // 純関数だけを持つ。掟には一切反していないのに、以前はこの検査が shell の検査より先に
+  // 立っていたため T? に落ちた —— 測定 t1 の `tracetype` が実例で、**梯子側の穴であって
+  // 実装の誤りではなかった**。L3 の inbound を施行しているのは L2 / L9 であり、InitData を
+  // 持たない core にも L2 は等しく届く。持たないのは検査されていないからではなく、
+  // 注入すべき値が無いからである。
+  //
+  // InitData を要求するのは shell を持つ機能に対してだけにする。shell があるということは
+  // 状態と Effect があるということで、そこで状態機械が読めないなら、それは本当に採点でき
+  // ていない —— T? はその場合のために残す。
+  if (!f.hasShell) {
+    return c.initData
+      ? { tier: "T1", why: "no shell.tsx — a state machine fed by InitData that declares no Effect" }
+      : { tier: "T1", why: "no shell.tsx and no *InitData parameter — core.ts holds pure helpers, which L2 covers all the same" };
   }
-  if (!f.hasShell) return { tier: "T1", why: "no shell.tsx — nothing in this feature declares an Effect" };
+  if (!c.initData) {
+    return { tier: "T?", why: "has a shell.tsx, but core.ts takes no parameter typed *InitData, so the inbound half of L3 cannot be read off it" };
+  }
   if (!c.effectReturn && c.effectSites.length === 0) {
     return { tier: "T1", why: "has a shell, but core.ts neither declares nor builds an Effect" };
   }
@@ -1619,6 +1638,18 @@ function runTierSelfTest(F, read) {
       label: "tiers: without a shell the same core is T1 — a core alone declares no Effect" },
     { got: () => tierOf(facts("good.core.ts"), false), expect: "T1",
       label: "tiers: a pure state machine fed by InitData, with no Effects, is T1" },
+    // v0.11 の訂正を固定する。測定 t1 の `tracetype` の形 —— 読み取り専用の画面で、core.ts は
+    // 型のパースとラベルという純関数だけを持ち、update も InitData も無い。掟には反していない
+    // ので、T0（core.ts が無い）でも T? でもなく T1 でなければならない。この行が落ちたら
+    // 梯子の穴が戻っている。
+    { got: () => judgeTier({ hasCore: true, hasShell: false,
+        core: { initData: false, effectReturn: false, effectSites: [], handled: [] } }).tier,
+      expect: "T1",
+      label: "tiers: a read-only feature whose core.ts holds pure helpers — no InitData, no shell — is T1, not T?" },
+    // その裏。**shell があるのに InitData が読めない**ときだけ T? に落ちること。片方だけだと
+    // 「T? を廃止した」と「T? を正しく狭めた」が区別できない。
+    { got: () => tierOf(facts("tier-ungraded.core.ts"), false), expect: "T1",
+      label: "tiers: the ungraded specimen without a shell is T1 — the missing InitData only matters once a shell exists" },
     { got: () => tierOf(null, false), expect: "T0",
       label: "tiers: a feature with no core.ts is T0" },
     // 「読めなかった」が段位を名乗らないこと。L3 が unknown なメンバ1つで静かに空虚になった
