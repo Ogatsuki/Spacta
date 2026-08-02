@@ -22,19 +22,28 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { createRecorder, createRuntime } from "../starter/src/shared/spacta/runtime.ts";
+import * as moderation from "../../livingdoc/src/features/moderation/core.ts";
 import { legacyRun } from "./drivers.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const starterEngine = join(here, "..", "starter", "src", "shared", "spacta");
 const livingdocEngine = join(here, "..", "..", "livingdoc", "src", "shared", "spacta");
 /**
- * Every place the engine exists on disk. It is one file that happens to be copied — starter
- * ships it as the template, livingdoc runs it, and `livingdoc/verify/starter/` carries it as
- * part of the reference corpus the verifier's wiring test needs. Until the engine is a package,
- * this list is the only thing stopping the copies from drifting, so a new copy belongs here on
- * the day it is made.
+ * The engine's one source, and every place a copy of it lands.
+ *
+ * `engine/` is the source; the rest are copies — starter ships it as the template, livingdoc
+ * runs it, and `livingdoc/verify/starter/` carries it because livingdoc bundles its own
+ * verifier whose wiring test needs a corpus. The list used to have no source in it, only
+ * peers compared against each other, which meant an edit to any one of them could be
+ * propagated in the wrong direction. `engine/` is first here on purpose: it is what the
+ * others are compared *to*, and `bun engine/sync.mjs` is what puts them back.
+ *
+ * A new copy belongs in `engine/sync.mjs` and here on the day it is made. A copy on neither
+ * list is a copy nothing propagates to and nothing checks.
  */
+const engineSource = join(here, "..", "engine");
 const engineCopies = [
+  engineSource,
   starterEngine,
   livingdocEngine,
   join(here, "..", "..", "livingdoc", "verify", "starter", "src", "shared", "spacta"),
@@ -256,9 +265,78 @@ assertEqual(
   "and nothing else is — a recorded State would make the replay cross-check agree with itself",
 );
 
-console.log(`\nengine copies — all ${engineCopies.length} of them:`);
-assert(identical("runtime.ts"), "shared/spacta/runtime.ts is byte-identical in every copy");
-assert(identical("react.ts"), "shared/spacta/react.ts is byte-identical in every copy");
+// ───────────────────────── 6. a real feature's compensation, driven by the engine ─────────
+// The engine guarantees the answer comes back. It does not guarantee the feature does anything
+// sensible with it, and the replay cross-check cannot tell the difference: it compares a run
+// against its own replay, so a feature that compensates *wrongly but deterministically* passes
+// every scenario. So the state is asserted here.
+//
+// Until v0.11 `MODERATE` carried no `correlationId` and moderation could name nothing: a success
+// dropped nothing from `pending`, and a failure dropped everything without undoing the change it
+// was failing — the console went on showing an approval underneath a notice saying it had failed.
+
+const MODERATION_INIT = {
+  now: "2026-07-26T09:00:00.000Z",
+  viewer: { id: "u_admin", username: "admin", avatarUrl: "", role: "admin", suspended: false },
+  reports: [],
+  requests: [
+    { id: "q_1", name: "Crafting Interpreters", url: "", note: "", status: "open",
+      createdAt: "2026-07-26T07:00:00.000Z", requester: { id: "u_kim", username: "kim", avatarUrl: "" } },
+  ],
+  users: [{ id: "u_spam", username: "spam", avatarUrl: "", traceCount: 4, suspended: false }],
+};
+
+/**
+ * Run the real moderation core on the real engine. `failing` names the correlationIds the
+ * server rejects — by id rather than wholesale, because "one command fails and another does
+ * not" is the case the old code could not express and is the one worth asserting.
+ */
+async function moderationRun(failing, actions) {
+  const runtime = createRuntime({
+    init: () => moderation.init(MODERATION_INIT),
+    update: moderation.update,
+    perform: async (effect) => {
+      if (failing.includes(effect.correlationId)) throw new Error("Request failed (500)");
+      return null;
+    },
+  });
+  for (const action of actions) runtime.dispatch(action);
+  await sleep(60);
+  return runtime.getState();
+}
+
+const approve = (correlationId) => ({ type: "RUN", correlationId, command: { command: "approve-request", targetId: "q_1" } });
+const suspend = (correlationId) => ({ type: "RUN", correlationId, command: { command: "suspend-user", targetId: "u_spam" } });
+
+console.log("\nmoderation — what the answer is allowed to change:");
+
+const modOk = await moderationRun([], [approve("c_m1")]);
+assertEqual(modOk.requests[0].status, "approved", "a confirmed command stands");
+assertEqual(modOk.pending, [], "and stops being called in flight — the success drops it from pending");
+assertEqual(modOk.notice, "", "a success says nothing");
+
+const modFailed = await moderationRun(["c_m1"], [approve("c_m1")]);
+assertEqual(modFailed.requests[0].status, "open", "a rejected command is undone — the row goes back to what it displaced");
+assertEqual(modFailed.pending, [], "and is dropped from pending, so nothing is left claiming to be in flight");
+assertEqual(modFailed.notice, "Request failed (500)", "the failure lives in state, so the broken run replays from (state, action) alone");
+
+// The wholesale clear this replaced could not tell two commands apart. One failing must not
+// retire the other, and undoing one must not touch the row the other one moved.
+const modMixed = await moderationRun(["c_m1"], [approve("c_m1"), suspend("c_m2")]);
+assertEqual(modMixed.requests[0].status, "open", "with two commands out, the rejected one still undoes its own row");
+assertEqual(modMixed.users[0].suspended, true, "and leaves the row of the command that succeeded alone");
+assertEqual(modMixed.pending, [], "both are retired — one failing no longer clears the queue for the other");
+
+// An answer naming a command this console never made must change nothing at all — the guard
+// that makes a duplicated or late outcome harmless.
+const strayOk = moderation.update(modOk, { type: "EFFECT_SUCCEEDED", correlationId: "c_never", id: undefined })[0];
+assertEqual(strayOk, modOk, "an outcome for a command that was never recorded changes nothing (success)");
+const strayFail = moderation.update(modOk, { type: "EFFECT_FAILED", correlationId: "c_never", message: "boom" })[0];
+assertEqual(strayFail, modOk, "an outcome for a command that was never recorded changes nothing (failure)");
+
+console.log(`\nengine — the source and its ${engineCopies.length - 1} copies:`);
+assert(identical("runtime.ts"), "runtime.ts matches engine/runtime.ts everywhere it lands");
+assert(identical("react.ts"), "react.ts matches engine/react.ts everywhere it lands");
 
 console.log(
   failures === 0

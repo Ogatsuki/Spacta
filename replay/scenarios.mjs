@@ -281,12 +281,41 @@ export const SCENARIOS = [
       d.materialrequest.dispatch({ type: "SET_URL", value: "https://craftinginterpreters.com" });
       d.pageview.dispatch({ type: "OPEN_REPORT", targetType: "comment", targetId: "cm_move" });
       d.materialrequest.dispatch({ type: "SUBMIT" });
-      d.moderation.dispatch({ type: "RUN", command: { command: "approve-request", targetId: "q_1" } });
+      d.moderation.dispatch({ type: "RUN", correlationId: "c_f3", command: { command: "approve-request", targetId: "q_1" } });
       d.pageview.dispatch({ type: "SET_REPORT_REASON", value: "off topic" });
       d.pageview.dispatch({ type: "SUBMIT_REPORT", correlationId: "c_f2" });
       // Reverse settlement is possible here in a way it is not within one feature: three engines
       // mean three Effects can be outstanding at once.
       await io.settleAll({ order: "reverse" });
+    },
+  },
+
+  {
+    id: "S9",
+    title: "a moderation command the server rejects (the console must put the row back)",
+    aims: "(2)",
+    drivers: ["engine"],
+    // Until v0.11 `MODERATE` carried no `correlationId`, so an answer could not name the command
+    // it belonged to: a success dropped nothing from `pending` and a failure dropped everything
+    // without undoing anything, leaving an approval on screen under a notice saying it had
+    // failed. This scenario drives that exact path. The cross-check proves the compensating run
+    // replays; `runtime.serialization.test.mjs` asserts that what it compensates *to* is right.
+    features: () => ({ moderation: feature.moderation() }),
+    async script(d, io) {
+      d.moderation.dispatch({
+        type: "RUN",
+        correlationId: "c_m1",
+        command: { command: "approve-request", targetId: "q_1" },
+      });
+      await io.settleAll({ outcome: () => ({ fail: "Request failed (500)" }) });
+      // A second command, so the failure above is shown not to have emptied the queue for a
+      // write that has nothing to do with it — the bug the old wholesale clear had.
+      d.moderation.dispatch({
+        type: "RUN",
+        correlationId: "c_m2",
+        command: { command: "suspend-user", targetId: "u_spam" },
+      });
+      await io.settleAll();
     },
   },
 
