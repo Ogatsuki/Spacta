@@ -9,7 +9,9 @@
     "garden": "node garden/garden.mjs starter",
     "measure": "node metrics/measure.mjs starter",
     "measure:starter": "node metrics/measure.mjs starter",
-    "measure:livingdoc": "node metrics/measure.mjs ../livingdoc"
+    "measure:livingdoc": "node metrics/measure.mjs ../livingdoc",
+    "vendor:sync": "node tools/vendor-sync.mjs",
+    "vendor:check": "node tools/vendor-sync.mjs --check"
   },
   "devDependencies": {
     "typescript": "^5"
