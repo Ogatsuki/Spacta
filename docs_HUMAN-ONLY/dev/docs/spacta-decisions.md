@@ -96,13 +96,21 @@ v0.11 の作業を引き継いだ AI が、いちばん助かったのは `SPACT
 守っているのは実行時依存ではなく、**「機能を読む人がデータ層を見に行かずに済むこと」**である。
 型の import は実行時には消えても、読む人の頭からは消えない。
 
-**守る検査: なし（無防備）。**
+**守る検査: `verify` の `data-layer-import`**（2026-08-03 に追加。掟ではない遮断検査、`spacta@c494529`）。
+livingdoc では64ファイルを歩いて0件。`import type` も落とす——実行時依存は増えないが、
+守っているのは実行時依存ではなく参照範囲だから。
 
-**確かめ方（2026-08-03 実施）:** `features/saved/types.ts` に
-`import { listBookmarkedTraces } from "@/shared/source/queries";` を植えた。
-→ **`verify: Green`, exit 0。何も言わなかった。**
-確認は `grep -rn 'from "@/shared/source' src/features/` を人間が打つしかない。
-なお `grep -rl "shared/source" src/features/` は2件出るが**どちらもコメント**である（文字列一致で数えないこと）。
+**確かめ方（2026-08-03、検査を作る前と後の両方）:**
+`features/saved/types.ts` に `shared/source/queries` の import を植えた。
+
+| | 結果 |
+|---|---|
+| 検査を作る前 | **`verify: Green`, exit 0。何も言わなかった** |
+| 検査を作った後 | **exit 1**、`src/features/saved/types.ts:5:1` を名指し（type-only import でも落ちる） |
+
+検体 `verify/fixtures/bad-data-layer.types.ts` / `good-data-layer.types.ts` を L6 自己テストに載せた。
+`good-` の方は本文に "shared/source" という文字列を持つが黙る——**検査が読むのは module specifier であって単語ではない**
+（`grep -rl "shared/source" src/features/` が2件出るのはどちらもコメントだからで、文字列一致で数えてはいけない）。
 
 ---
 
@@ -159,9 +167,10 @@ Effect の答えは**1本の経路**（`data`、型は機能が宣言）だけ�
 **理由:** `shared/source/` へ移すと D-003 の0件が壊れる。`shared/` に置けば矢印は伸びない。
 `measure` に `readModel` ゾーンを足したので、契約と読みモデルを分けて測れる（数字の連続性はここで切れる）。
 
-**守る検査:** D-003 と同じ = **なし（無防備）。**
+**守る検査:** D-003 と同じ = **`verify` の `data-layer-import`**（2026-08-03 に追加）。
+読みモデルを `shared/source/` へ移せば、それを import する `features/*/types.ts` が落ちるようになった。
 
-**確かめ方:** D-003 の植え込みで確認済み（素通り）。
+**確かめ方:** D-003 と同じ植え込みで両方向を確認済み。
 
 ---
 
@@ -175,13 +184,22 @@ Effect の答えは**1本の経路**（`data`、型は機能が宣言）だけ�
 | エンジンのコピーが正本と一致 | **`vendor-sync --check`** + `runtime.serialization` の3コピー照合 | ✅ 実際に検出 |
 | Effect のループを2つ書かない | **L4 effect-runtime**（手書き switch を `src/**` 全体で走査） | ⚠️ 部分的（`createRuntime` の複製は見ない） |
 | T3 機能の往復が実際に動く | **`runtime.serialization`** の状態 assertion | ⚠️ **10変異中5つ生き残り**（下記） |
+| **エンジンに `react` も `next` も入れない** | **`verify` の `engine-portability`** | ✅ 両方向を見た（下記） |
+| **機能はデータ層を import しない（0件）** | **`verify` の `data-layer-import`** | ✅ 両方向を見た（D-003） |
 | 掟は10本のまま | **なし（無防備）** | — |
 | 膜語彙は4つのまま（State/Action/Effect/InitData） | **なし（無防備）** | — |
-| **エンジンに `react` も `next` も入れない** | **なし（無防備）** | ✅ 素通りを確認（下記） |
-| 機能はデータ層を import しない（0件） | **なし（無防備）** | ✅ 素通りを確認（D-003） |
 | 答えの経路は1本（`data` のみ、`id` を戻さない） | **なし（無防備）** | — |
 
-### エンジンへの `react` 混入は誰も止めない（2026-08-03 実測）
+**2026-08-03 の作業で、無防備が5件 → 3件になった。** 残る3件はいずれも
+「型や掟の*本数*についての約束」で、AST を歩いて数えるのとは種類が違う（そこが難しさである）。
+
+### エンジンへの `react` 混入は誰も止めなかった → 止まるようになった（2026-08-03）
+
+**追記（同日、`spacta@c494529`）:** `verify` に `engine-portability` を足した。
+`shared/spacta/` のうち `react.ts`（バインディングそのもの）以外を歩き、`react` / `react-dom` / `next`
+の import を落とす。**fail-closed** ——エンジンにファイルが増えたら既定で検査対象になる。
+再度植えたところ **exit 1、`src/shared/spacta/runtime.ts:21:1` を名指し**した。以下は検査を作る前の記録。
+
 
 `engine/runtime.ts` の**冒頭コメント自身**がこう書いている:
 
@@ -200,28 +218,50 @@ vendor-sync               3 file(s) written（黙って配った）
 **移植可能性という設計の中心が、散文でしか守られていない。**
 検査を1本足すのは容易（`engine/` 配下の import を許可リストで縛る）。
 
-### 往復の無防備（2026-08-03 `mutate` 実測）
+### 往復の無防備 → 塞いだ（2026-08-03 `mutate` 実測、同日対処）
+
+**初回（`spacta@9fa8198`）:**
 
 ```
 SURVIVED  draft       answer-ignored / failure-uncompensated
 SURVIVED  watchlist   answer-ignored / failure-uncompensated
 SURVIVED  pageview    failure-uncompensated
 killed    moderation x2, saved x2, pageview answer-ignored
+→ 10 mutation(s): 5 killed, 5 survived
 ```
 
-`draft` と `watchlist` は**振る舞いの assertion が1つも無い**。
-`pageview` は今日 id の採用を足したが、**補償は依然として無防備**。
+`draft` と `watchlist` は**振る舞いの assertion が1つも無かった**。両方とも T3 を申告しており、
+`verify` には言うことが無く、`crosscheck` は壊れた振る舞いを正しいものと同じ忠実さでリプレイしていた。
+
+**対処後（`spacta@510a012`）:** `runtime.serialization` に実機能の状態 assertion を追加（48 → **72 assertions**）。
+
+```
+→ 10 mutation(s): 10 killed, 0 survived  (exit 0)
+```
+
+殺したのは**全部 `runtime.serialization`**。`crosscheck` は前後どちらでも1つも殺していない
+——自分の文書が言っている通り（run とその replay を比べるので、間違っていても決定論的なら通る）。
+
+draft で足した assertion のうち1つは特筆に値する。**保存が飛んでいる間に読者が打ち続けた場合、
+答えは「送ったスナップショット」を確定させる**——画面の新しい本文ではなく。
+`draft/types.ts` のコメントはこれを説明していたが、何も検算していなかった。
 
 ---
 
 ## 次にやるべきこと（この文書から導かれる順）
 
-1. **`draft` / `watchlist` / `pageview`(補償) に状態 assertion を書く** → `mutate` を 0 survivors にする
-2. **エンジンの import を検査する**（`react` / `next` 混入を落とす）
-3. **`features → shared/source` を検査にする**（D-003 / D-007 を無防備から外す）
-4. `mutate` を CI ゲートに入れるか判断する（今は exit 1 = 測定結果であって故障ではない）
+**2026-08-03 に 1〜3 を実施済み。** 以下は残り。
 
-**1〜3 はどれも「散文で守っているものを検査に変える」であり、それがこの文書の使い方である。**
+- [x] ~~`draft` / `watchlist` / `pageview`(補償) に状態 assertion~~ → `510a012`、0 survivors
+- [x] ~~エンジンの import を検査する~~ → `c494529`、`engine-portability`
+- [x] ~~`features → shared/source` を検査にする~~ → `c494529`、`data-layer-import`
+- [ ] **`mutate` を CI ゲートに入れるか判断する**（今は exit 1 = 測定結果であって故障ではない。
+      ゲートにすると「新機能を足したら survivors が出る」が赤になる——それは正しいのか？）
+- [ ] **`mutate` の変異を増やす。** 現在は往復の2ケースだけ。Effect の構築、validation、
+      補償の*中身*（正しい行を戻しているか）は無傷で通る
+- [ ] 残る無防備3件（掟10本・膜語彙4つ・答えの経路1本）に手が届くか検討する
+
+**この文書の使い方は「散文で守っているものを検査に変える」であり、上の3件はその実例である。**
 
 ---
 
