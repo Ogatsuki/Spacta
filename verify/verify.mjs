@@ -137,6 +137,16 @@ function getViolationDetails(v) {
       why = v.msg;
       fix = "Avoid direct cross-feature imports. Go through the @/shared layer or communicate via API/DB/URL boundaries.";
       break;
+    case "engine-portability":
+      name = "Engine portability (not a Law — a blocking check)";
+      why = v.msg;
+      fix = "Move the binding into the adapter (shared/spacta/react.ts). The engine is the part with no opinion about the platform; a UI framework named inside it is what stops it moving to SwiftUI or Compose.";
+      break;
+    case "data-layer-import":
+      name = "Data-layer import (not a Law — a blocking check)";
+      why = v.msg;
+      fix = "Read it at the server boundary (app/**) and hand it to the feature as InitData. If the screen needs more after it has loaded, declare an Effect and let its answer come back as an Action. `import type` counts: what this protects is that a feature can be read without opening the data layer.";
+      break;
     case "L2":
       name = "Purity";
       why = v.msg;
@@ -601,6 +611,70 @@ export function checkSharedReverseDependency(file, text) {
         const loc = locOf(sf, n);
         out.push(V(file, loc.line, loc.col, "L7", `Shared layer imports feature '${featureName}' internals (reverse dependency)`));
       }
+    }
+  });
+  return out;
+}
+
+// ───────────────────── engine-portability（掟ではない・err）─────────────────────
+// エンジン（`shared/spacta/` のうちアダプタ以外）に UI フレームワークが入っていないか。
+//
+// **なぜ掟にしないか。** SPACTA.md は掟を10本と決めており、これはその11本目ではない。
+// 移植可能性は掟が守る性質ではなく、エンジンという1ファイルの設計上の約束である。
+// `law: "—"` で severity: "err" ——「掟ではないが緑を止める検査」という第3の区分になる。
+//
+// **なぜ要るか。** `engine/runtime.ts` の冒頭コメントは "There is no `react` and no `next` in
+// this file, and there must never be one. That is the unit that gets ported to SwiftUI or
+// Compose." と書いている。2026-08-03 に `import { useState } from "react";` を植えたところ、
+// verify は starter・livingdoc とも Green、serialization も 48 assertions 全部通り、
+// vendor-sync は3コピーへ黙って配った。**設計の中心が散文だけで守られていた。**
+//
+// react.ts は意図的に対象外である（バインディングそのものなので react を import して当然）。
+// 除外はそれ1つだけで、`shared/spacta/` に新しく置かれたファイルは既定で検査される
+// —— 増えたときに黙って穴が開くより、落ちて名指しされる方を選ぶ。
+const UI_FRAMEWORK = /^(react|react-dom|next)(\/|$)/;
+
+export function checkEnginePlatformFreedom(file, text) {
+  const sf = parse(file, text);
+  const out = [];
+  eachNode(sf, (n) => {
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
+      const spec = n.moduleSpecifier.text;
+      if (!UI_FRAMEWORK.test(spec)) return;
+      const loc = locOf(sf, n);
+      out.push(V(file, loc.line, loc.col, "engine-portability",
+        `The engine imports '${spec}'. It is the unit that gets ported to another UI runtime, so it may not name one`));
+    }
+  });
+  return out;
+}
+
+// ─────────────────── data-layer-import（掟ではない・err）───────────────────
+// 機能がデータ層（`shared/source`）を import していないか。
+//
+// SPACTA.md §3 が事実として書いている性質である ——「`shared/source/*` is imported by `app/**`
+// — the server boundary — and by nothing else; no feature imports it」。これを機械にした。
+// 掟を1本増やしたのではなく、**既に書いてある主張を検算できるようにした**だけである。
+//
+// 2026-08-03 の実測: `features/saved/types.ts` に `shared/source/queries` の import を植えても
+// verify は Green、exit 0 だった。確認手段は人間が打つ grep しかなかった。
+//
+// **型だけの import でも落とす。** `import type` はコンパイル後に消えるので実行時依存は増えない
+// （実際 livingdoc の49箇所中47が type-only）。守っているのは実行時依存ではなく、
+// **機能を読む人がデータ層を見に行かずに済むこと**である。型の import は実行時には消えても、
+// 読む人の頭からは消えない。
+export function checkFeatureDataLayerImport(file, text) {
+  const sf = parse(file, text);
+  const out = [];
+  eachNode(sf, (n) => {
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
+      const spec = n.moduleSpecifier.text;
+      // エイリアス（@/shared/source…）と相対パス（../../shared/source…）の両方。
+      // コメント中の文字列に反応しないよう、必ず import 宣言の specifier だけを見る。
+      if (!/(?:^|\/)shared\/source(?:\/|$)/.test(spec)) return;
+      const loc = locOf(sf, n);
+      out.push(V(file, loc.line, loc.col, "data-layer-import",
+        `A feature imports the data layer ('${spec}'). Data reaches a feature as InitData, once, at init()`));
     }
   });
   return out;
@@ -1137,6 +1211,28 @@ const CHECKS = [
     roles: ["shell", "component"],
     run: (f, text) => checkPresentationPurity(f, text),
     promise: null,
+  },
+  {
+    // `law: "—"` と `severity: "err"` の組は「掟ではないが緑を止める検査」である。
+    // SPACTA.md の掟は10本のままで、11本目を足していない —— 守っているのはエンジン1ファイルの
+    // 設計上の約束であって、Spacta が普遍的に主張する性質ではない。
+    //
+    // 木で走査する。役割で書けないのは、`src/shared/spacta/` が役割 `shared` に落ち、そこには
+    // `runEffect.ts` も `time.ts` も居るからである（あれらは react を import してよい）。
+    law: "—", name: "engine-portability", severity: "err",
+    root: (r) => join(r, "src", "shared", "spacta"),
+    match: (q) => /\.tsx?$/.test(q) && !/(^|\/)react\.ts$/.test(q),
+    run: (f, text) => checkEnginePlatformFreedom(f, text),
+    promise: "The engine names no UI framework, so it is still the unit that ports",
+  },
+  {
+    // 同じく掟ではない。SPACTA.md §3 が**事実として**書いている性質
+    //（"no feature imports it"）を検算できるようにしただけで、掟を1本増やしてはいない。
+    law: "—", name: "data-layer-import", severity: "err",
+    root: (r) => join(r, "src", "features"),
+    match: (q) => /\.(ts|tsx)$/.test(q),
+    run: (f, text) => checkFeatureDataLayerImport(f, text),
+    promise: "No feature imports the data layer — data arrives as InitData",
   },
   {
     law: "—", name: "clone", severity: "info",
@@ -1835,6 +1931,37 @@ function runSelfTest() {
       expect: [],
       label: "L7 does not trigger false positives on a clean shared layer"
     },
+    // 掟ではない2つの遮断検査。どちらも「散文だけが守っていた性質」を機械にしたもので、
+    // 検体は 2026-08-03 に実際に植えて素通りを確認した形をそのまま写してある。
+    {
+      exec: () => checkEnginePlatformFreedom(F("bad-engine-portability.runtime.ts"), read("bad-engine-portability.runtime.ts")),
+      expect: [
+        { rule: "engine-portability", line: 4 },
+        { rule: "engine-portability", line: 5 }
+      ],
+      label: "engine-portability rejects react and next inside the engine"
+    },
+    {
+      exec: () => checkEnginePlatformFreedom(F("good-engine-portability.runtime.ts"), read("good-engine-portability.runtime.ts")),
+      expect: [],
+      label: "engine-portability does not trigger false positives on a platform-free engine"
+    },
+    {
+      exec: () => checkFeatureDataLayerImport(F("bad-data-layer.types.ts"), read("bad-data-layer.types.ts")),
+      expect: [
+        { rule: "data-layer-import", line: 6 },
+        { rule: "data-layer-import", line: 7 }
+      ],
+      label: "data-layer-import rejects a feature importing shared/source, by alias and by relative path"
+    },
+    {
+      // `import type` は実行時に消えるが、それでも落ちること。消えるから見逃してよいなら
+      // この検査は要らない —— 守っているのは実行時依存ではなく、読む人の参照範囲である。
+      // 併せて、本文に "shared/source" という文字列があっても import でなければ黙ること。
+      exec: () => checkFeatureDataLayerImport(F("good-data-layer.types.ts"), read("good-data-layer.types.ts")),
+      expect: [],
+      label: "data-layer-import reads module specifiers, not the word — a clean feature stays silent"
+    },
     // L5(route): rejects non-deterministic generation in routes / avoids false positives
     {
       exec: () => checkSourcePurity(F("bad-route.route.ts"), read("bad-route.route.ts")),
@@ -2383,8 +2510,17 @@ if (errors.length > 0) {
 } else {
   // Derived from CHECKS, never hardcoded: the list of laws claimed here cannot drift away
   // from the list of laws actually run.
-  const enforced = scan.report.filter((r) => r.severity === "err").map((r) => r.law).join(", ");
+  //
+  // Blocking checks that are not Laws are named separately rather than folded in. Printing
+  // them as `—` inside the Laws list would read as an eleventh law with no number, and
+  // dropping them would claim the green covers less than it does.
+  const blocking = scan.report.filter((r) => r.severity === "err");
+  const enforced = blocking.filter((r) => r.law !== "—").map((r) => r.law).join(", ");
+  const unnumbered = blocking.filter((r) => r.law === "—").map((r) => r.name);
   console.log(`✓ Laws (${enforced}): No violations`);
+  if (unnumbered.length > 0) {
+    console.log(`✓ Blocking checks that are not Laws (${unnumbered.join(", ")}): No violations`);
+  }
 }
 
 if (warns.length > 0) {
