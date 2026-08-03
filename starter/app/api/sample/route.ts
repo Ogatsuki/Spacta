@@ -2,9 +2,9 @@
  * route.ts = server boundary, same law as page.tsx (L5): do IO here, delegate any
  * aggregation to a pure Core function, and generate no time/random/id of your own.
  *
- * This is the far end of the write path. shared/runEffect.ts POSTs a SAVE Effect here;
- * the `{ id }` returned travels back as an EFFECT_SUCCEEDED Action and Core receives it
- * as injected data (L3).
+ * This is the far end of the write path. The feature's own `src/features/sample/perform.ts`
+ * POSTs a SAVE Effect here; the `{ id }` returned travels back as an EFFECT_SUCCEEDED Action
+ * and Core receives it as injected data (L3).
  *
  * On the id vs L5 — read this before assuming a contradiction. Returning an id is not
  * "generating an id at the boundary". The handler never invents one: the database assigns

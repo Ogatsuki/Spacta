@@ -1,30 +1,34 @@
 /**
- * runEffect = The ONLY place to execute Effect (L4).
- * Async is isolated here. When adding Effect, add a case here.
- * default has assertNever, so forgetting causes a tsc error = silent swallowing doesn't happen.
+ * The transport. HTTP, and nothing about what is being sent.
  *
- * Contract: return data on success, throw on failure. Never swallow an error and never touch
- * state from here — the Shell turns both outcomes into Actions, so Core stays the only writer
- * of state and the run stays replayable from the Action log alone (L3).
+ * This file used to hold `runEffect` — the single switch every Effect in the application passed
+ * through. There is no such switch any more: a feature hands the engine its own `perform`
+ * (`features/<name>/perform.ts`) and declares its own Effects beside it. What is left is the
+ * part that was never anybody's vocabulary — a POST with a JSON body, and a thrown error on a
+ * non-2xx.
  *
- * Note: Manual Effect switch is rejected by verify (L4) inside shell.tsx.
- * Only this file (shared runtime) is allowed to write switch, by operational policy.
+ * It stays shared because it is mechanism, not judgement: the line is whether adding a feature
+ * changes it, and this does not. Copying it into each feature would be the reinvention the
+ * engine exists to prevent.
+ *
+ * Contract, unchanged: return data on success, throw on failure. Never swallow an error and
+ * never touch state from here — the engine turns both outcomes into Actions, so Core stays the
+ * only writer of state and the run stays replayable from the Action log alone (L3).
  */
-import { Effect, EffectResult, assertNever } from "./types";
+import { EffectResult } from "./types";
 
-export async function runEffect(effect: Effect): Promise<EffectResult | null> {
-  switch (effect.type) {
-    case "SAVE":
-      // Real IO goes here:
-      //   const res = await fetch("/api/sample", { method: "POST", body: JSON.stringify(effect) });
-      //   if (!res.ok) throw new Error(await res.text());
-      //   return await res.json();
-      // The id is assigned by the server's database, never invented here or in Core (L3/L5).
-      return { id: "srv_generated_id" };
-    case "LOG":
-      console.log(effect.message);
-      return null; // An Effect with no correlationId has no answer to carry back.
-    default:
-      return assertNever(effect);
+export async function post(url: string, payload: unknown): Promise<EffectResult | null> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(detail || `Request failed (${res.status})`);
   }
+  // Endpoints that assign nothing answer 204 with no body; there is no result to carry.
+  const contentType = res.headers.get("content-type") ?? "";
+  if (res.status === 204 || !contentType.includes("application/json")) return null;
+  return (await res.json()) as EffectResult;
 }

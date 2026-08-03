@@ -4,23 +4,24 @@
  * state into props, callbacks into dispatch.
  *
  * Do not write your own effect loop. useSpacta hands the queue to the engine, which performs
- * every Effect through runEffect and feeds every outcome back in as an Action — including the
- * outcome of an Effect that carries no correlationId. Non-determinism (now, ids) is minted by
- * the binding adapter and reaches Core as values (L3); Core generates none of it.
+ * every Effect through this feature's own `perform` and feeds every outcome back in as an
+ * Action — including the outcome of an Effect that carries no correlationId. Non-determinism
+ * (now, ids) is minted by the binding adapter and reaches Core as values (L3); Core generates
+ * none of it.
  */
 "use client";
-import { runEffect } from "@/shared/runEffect";
 import { useSpacta } from "@/shared/spacta/react";
 import { CounterActions } from "./components/CounterActions";
 import { CounterSummary } from "./components/CounterSummary";
 import { init, summarize, update } from "./core";
+import { perform } from "./perform";
 import type { Action, Effect, InitData, State } from "./types";
 
 export function SampleShell({ initData }: { initData: InitData }) {
   const [state, dispatch] = useSpacta<State, Action, Effect>({
     init: () => init(initData),
     update,
-    perform: runEffect,
+    perform,
   });
   const summary = summarize(state);
 

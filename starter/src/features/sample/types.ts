@@ -1,7 +1,6 @@
 /**
  * Feature-specific types. Do not import from other features (L1).
  */
-import { Effect } from "@/shared/types";
 
 // Entry point of read path: World → Source(IO) → InitData → Core.init
 export type InitData = {
@@ -20,6 +19,21 @@ export type State = {
   notice: string | null;
 };
 
+// A value where Core declares "desired IO". It does not execute (only data crosses the boundary).
+//
+// This vocabulary belongs to *this* feature, and is declared beside the `perform.ts` that carries
+// it out. There is no shared Effect union: adding a member here edits nothing outside this
+// directory, and a second feature that needs the same Effect writes it out again rather than
+// reaching for a shared declaration (SPACTA.md §2 — duplication over coupling).
+//
+// An Effect whose answer must reach Core carries a correlationId: pairing a request with its
+// answer is non-determinism too, so the edge mints it and Core receives it as a value (L3).
+// A member without one still gets an answer — the engine reports the outcome of every Effect
+// it performs — but that answer names no write, so Core can only note that it arrived.
+export type Effect =
+  | { type: "SAVE"; correlationId: string; key: string; value: string }
+  | { type: "LOG"; message: string };
+
 // Entry point of write path: Shell → Action → Core.update
 export type Action =
   | { type: "INCREMENT"; now: string; correlationId: string }
@@ -32,5 +46,3 @@ export type Action =
   // and says so in a case of its own — a sentence, not a branch the loop takes on its behalf.
   | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; id?: string }
   | { type: "EFFECT_FAILED"; correlationId: string | null; message: string };
-
-export type { Effect };
