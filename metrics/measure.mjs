@@ -157,7 +157,7 @@ if (leaked.length) {
 // zones のキー順は §4-② が定めた並び（隔離済み → エンジン → 契約 → 共有 → フレームワーク）
 // をそのまま使う。共有予算がどう育つかを読むための並びであり、アルファベット順にすると
 // その意味が消える。
-const ZONE_ORDER = ["feature", "engine", "contract", "sharedUi", "dataAdapter", "sharedOther", "framework"];
+const ZONE_ORDER = ["feature", "engine", "contract", "readModel", "sharedUi", "dataAdapter", "sharedOther", "framework"];
 
 // `src/` 側のゾーン規則。**上から順に最初に一致したものを採る。**
 // 意図的に catch-all（`^src\/.+`）を置いていない: どのゾーンにも落ちないファイルは
@@ -167,6 +167,12 @@ const SRC_ZONES = [
   [/^src\/features\/.+/, "feature"],
   [/^src\/shared\/spacta\/.+/, "engine"],
   [/^src\/shared\/types\.ts$/, "contract"],
+  // 読みモデル（データアダプターの出力の形）を契約から分けて数える。v0.11 までこの2つは
+  // `shared/types.ts` に同居していて、155行の読みモデルと44行の契約が1つの数字になっていた。
+  // 分けたのは「共有予算がどう育つか」を読むためで、依存の向きは変えていない（どちらも
+  // `shared/` にあり、機能が `shared/source` を import しないという性質は保たれる）。
+  // このファイルを持たないプロジェクトでは 0f/0L と出るだけで、止まりはしない。
+  [/^src\/shared\/readmodels\.ts$/, "readModel"],
   [/^src\/shared\/ui\/.+/, "sharedUi"],
   // starter は `shared/source.ts` の1ファイル、livingdoc は `shared/source/` のディレクトリ。
   // どちらも同じデータアダプターである（verify の platform 表と同じ書き方）。
