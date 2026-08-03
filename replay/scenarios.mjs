@@ -15,6 +15,7 @@ import { createIO, DRIVERS } from "./drivers.mjs";
 import * as pageview from "../../livingdoc/src/features/pageview/core.ts";
 import * as materialrequest from "../../livingdoc/src/features/materialrequest/core.ts";
 import * as moderation from "../../livingdoc/src/features/moderation/core.ts";
+import * as saved from "../../livingdoc/src/features/saved/core.ts";
 
 // ───────────────────────── fixtures ─────────────────────────
 // Fixed values throughout. Nothing here reads a clock or a random source, because these end up
@@ -75,8 +76,44 @@ function pageviewInit(now = "2026-07-26T09:00:00.000Z") {
   };
 }
 
+/** A saved-list row. `TraceWithPage` — the trace plus where it lives, since it is shown off its page. */
+function savedItem(id, createdAt) {
+  return {
+    trace: {
+      id,
+      pageId: "p_ownership",
+      type: "insight",
+      quote: "",
+      quoteKey: "",
+      body: `Saved trace ${id}.`,
+      author: AUTHOR,
+      createdAt,
+      votes: 0,
+      viewerVoted: false,
+      bookmarked: true,
+      comments: [],
+    },
+    page: PAGE,
+  };
+}
+
 const feature = {
   pageview: (now) => ({ init: pageview.init, update: pageview.update, initData: pageviewInit(now) }),
+  /**
+   * The read-later list, seeded with one page and told there is another. `hasMore` is the
+   * server's count, not a guess: Core refuses to ask for a page it was not told exists, which
+   * is what S9 leans on when it clicks twice.
+   */
+  saved: () => ({
+    init: saved.init,
+    update: saved.update,
+    initData: {
+      now: "2026-07-26T09:00:00.000Z",
+      viewer: READER,
+      items: [savedItem("t_s1", "2026-07-25T10:00:00.000Z"), savedItem("t_s2", "2026-07-25T09:00:00.000Z")],
+      hasMore: true,
+    },
+  }),
   materialrequest: () => ({
     init: materialrequest.init,
     update: materialrequest.update,
@@ -343,6 +380,40 @@ export const SCENARIOS = [
       p.dispatch({ type: "OPEN_REPORT", targetType: "trace", targetId: "t_borrow" });
       p.dispatch({ type: "SET_REPORT_REASON", value: "duplicate" });
       p.dispatch({ type: "SUBMIT_REPORT", correlationId: "c_g3" });
+      await io.settleAll({ outcome: () => ({ fail: "Request failed (500)" }) });
+    },
+  },
+
+  {
+    id: "S10",
+    title: "a read after the page has loaded (load more, then remove from the page it brought)",
+    aims: "(2)(3)",
+    drivers: ["engine"],
+    // Every other scenario answers a write with an id. This one answers a *read* with rows, so
+    // it is the only place the `data` channel is exercised end to end: Effect out, page back,
+    // appended by Core, recorded, replayed. The removal afterwards matters as much as the load —
+    // it acts on a trace that was never in `initData`, so a replay that rebuilt the list wrongly
+    // cannot settle to the same state.
+    features: () => ({ saved: feature.saved() }),
+    async script(d, io) {
+      const s = d.saved;
+      s.dispatch({ type: "LOAD_MORE", correlationId: "c_s1" });
+      // A second click while the first page is away. Core holds a `load` in `pending` and must
+      // refuse: two pages asked from one cursor would append the same rows twice.
+      s.dispatch({ type: "LOAD_MORE", correlationId: "c_s2" });
+      await io.settleAll({
+        outcome: () => ({
+          data: {
+            of: "LOAD_MORE",
+            traces: [savedItem("t_s3", "2026-07-25T08:00:00.000Z")],
+            hasMore: false,
+          },
+        }),
+      });
+      s.rerender();
+      // Remove the trace the read brought back, and let that write fail: the compensation has to
+      // put back an item that only ever existed as the answer to an Effect.
+      s.dispatch({ type: "REMOVE_BOOKMARK", traceId: "t_s3", correlationId: "c_s3" });
       await io.settleAll({ outcome: () => ({ fail: "Request failed (500)" }) });
     },
   },

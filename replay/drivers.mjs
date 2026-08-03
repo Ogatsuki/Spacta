@@ -179,11 +179,22 @@ export function createIO() {
     for (let i = 0; i < rounds; i++) await tick();
   }
 
+  /**
+   * `perform` may hand back two things: an `id` the server assigned, and `data` a read answered
+   * with. Both have to survive the stub. Resolving with `{ id }` alone — which this did until a
+   * feature actually read something — would drop a page of rows between here and the engine, and
+   * the scenario would pass green having carried nothing. `.mjs` is not type-checked, so nothing
+   * else would have said so.
+   */
   function settle(index, answer) {
     const call = calls[index];
     call.done = true;
-    if (answer && answer.fail) call.reject(new Error(answer.fail));
-    else call.resolve(answer && answer.id ? { id: answer.id } : null);
+    if (answer && answer.fail) return call.reject(new Error(answer.fail));
+    if (!answer || (answer.id === undefined && answer.data === undefined)) return call.resolve(null);
+    const result = {};
+    if (answer.id !== undefined) result.id = answer.id;
+    if (answer.data !== undefined) result.data = answer.data;
+    call.resolve(result);
   }
 
   return {

@@ -23,7 +23,8 @@ import { fileURLToPath } from "node:url";
 
 import { createRecorder, createRuntime } from "../starter/src/shared/spacta/runtime.ts";
 import * as moderation from "../../livingdoc/src/features/moderation/core.ts";
-import { legacyRun } from "./drivers.mjs";
+import * as saved from "../../livingdoc/src/features/saved/core.ts";
+import { createIO, legacyRun } from "./drivers.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const starterEngine = join(here, "..", "starter", "src", "shared", "spacta");
@@ -427,6 +428,132 @@ assertEqual(
   ["recorded"],
   "folding update over the recorded Actions rebuilds the run — a read replays like anything else",
 );
+
+// ───────────────────────── 8. the read path, in a real feature ────────────────────────────
+// Section 7 proved the engine carries `data`. This proves a real feature does something correct
+// with it, which the cross-check cannot: a run that appends the wrong rows — or none at all — is
+// still perfectly reproducible, so S10 passes either way. Same reason moderation's state is
+// asserted above rather than left to the replay.
+//
+// This is also the one place the IO stub's own fidelity is load-bearing. `drivers.mjs` used to
+// resolve every call as `{ id }`, which would reach Core here as an answer with no rows: the
+// "no data" assertion below is what makes that failure loud instead of merely deterministic.
+
+const SAVED_PAGE = {
+  materialSlug: "rust-book",
+  materialName: "The Rust Programming Language",
+  materialCanonicalUrl: "https://doc.rust-lang.org/book/",
+  pageId: "p_ownership",
+  pageSlug: "ch04-01",
+  pageNumber: "4.1",
+  pageTitle: "What is Ownership?",
+  canonicalUrl: "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html",
+};
+
+const savedItem = (id) => ({
+  trace: {
+    id,
+    pageId: "p_ownership",
+    type: "insight",
+    quote: "",
+    quoteKey: "",
+    body: `Saved trace ${id}.`,
+    author: { id: "u_kim", username: "kim", avatarUrl: "" },
+    createdAt: "2026-07-25T10:00:00.000Z",
+    votes: 0,
+    viewerVoted: false,
+    bookmarked: true,
+    comments: [],
+  },
+  page: SAVED_PAGE,
+});
+
+const SAVED_INIT = {
+  now: "2026-07-26T09:00:00.000Z",
+  viewer: { id: "u_reader", username: "reader", avatarUrl: "", role: "user", suspended: false },
+  items: [savedItem("t_s1"), savedItem("t_s2")],
+  hasMore: true,
+};
+
+/**
+ * Run the real saved core on the real engine. `answer(effect)` decides what each Effect gets
+ * back — `{ data }`, `{ id }`, or `{ fail }` — and `performed` records what was actually asked,
+ * which is how "the second click asked nothing" becomes checkable rather than assumed.
+ */
+async function savedRun(answer, actions) {
+  const performed = [];
+  const runtime = createRuntime({
+    init: () => saved.init(SAVED_INIT),
+    update: saved.update,
+    perform: async (effect) => {
+      performed.push(effect);
+      const reply = answer(effect);
+      if (reply && reply.fail) throw new Error(reply.fail);
+      return reply ?? null;
+    },
+  });
+  for (const action of actions) runtime.dispatch(action);
+  await sleep(60);
+  return { state: runtime.getState(), performed, runtime };
+}
+
+const page2 = { of: "LOAD_MORE", traces: [savedItem("t_s3")], hasMore: false };
+const load = (correlationId) => ({ type: "LOAD_MORE", correlationId });
+const ids = (state) => state.items.map((item) => item.trace.id);
+
+console.log("\nsaved — a read performed after the page has loaded:");
+
+const loaded = await savedRun(() => ({ data: page2 }), [load("c_s1")]);
+assertEqual(ids(loaded.state), ["t_s1", "t_s2", "t_s3"],
+  "the rows a read answered with are appended — the screen grew without a navigation");
+assertEqual(loaded.state.hasMore, false, "and `hasMore` is the server's answer, not something Core inferred");
+assertEqual(loaded.state.pending, [], "the load is retired once answered");
+assertEqual(loaded.state.notice, "", "a successful read says nothing");
+
+// Two clicks before the first page is back. The cursor is the last row held, so a second
+// request built from the same cursor would fetch — and append — the same page twice.
+const twice = await savedRun(() => ({ data: page2 }), [load("c_s1"), load("c_s2")]);
+assertEqual(twice.performed.length, 1, "a second click while a page is in flight asks nothing — one page at a time");
+assertEqual(ids(twice.state), ["t_s1", "t_s2", "t_s3"], "so no row arrives twice");
+
+// A failed read undid nothing, so there is nothing to put back — but the page is still out
+// there, and retiring the button would strand the reader on a list that looks complete.
+const loadFailed = await savedRun(() => ({ fail: "Request failed (500)" }), [load("c_s1")]);
+assertEqual(ids(loadFailed.state), ["t_s1", "t_s2"], "a failed read appends nothing");
+assertEqual(loadFailed.state.hasMore, true, "and leaves the page it failed to fetch still offered");
+assertEqual(loadFailed.state.notice, "Request failed (500)", "and says why, through the same outcome Action");
+
+// An answer that arrives with no rows attached — what a transport that dropped `data` looks
+// like from inside Core. It must not read as "the list ended", because that is indistinguishable
+// from success and is exactly how a silent loss would survive every replay.
+const loadEmpty = await savedRun(() => ({ id: "srv_1" }), [load("c_s1")]);
+assertEqual(ids(loadEmpty.state), ["t_s1", "t_s2"], "an answer carrying no data appends nothing");
+assertEqual(loadEmpty.state.notice, "Could not load more saved traces.",
+  "and says so, instead of looking like the end of the list");
+
+// Compensation over a row that was never in initData: undoing this removal has to restore an
+// item the run only ever received as the answer to an Effect.
+const afterLoad = await savedRun(
+  (effect) => (effect.type === "LOAD_MORE" ? { data: page2 } : { fail: "Request failed (500)" }),
+  [load("c_s1")],
+);
+afterLoad.runtime.dispatch({ type: "REMOVE_BOOKMARK", traceId: "t_s3", correlationId: "c_s3" });
+await sleep(60);
+const restored = afterLoad.runtime.getState();
+assertEqual(ids(restored), ["t_s1", "t_s2", "t_s3"],
+  "a rejected removal restores a row that only ever existed as the answer to an Effect");
+assertEqual(restored.notice, "Request failed (500)", "under the notice that says the removal failed");
+assertEqual(restored.pending, [], "and nothing is left claiming to be in flight");
+
+// The stub the cross-check drives every scenario through, checked directly. It used to resolve
+// each call as `{ id }` and nothing else, so a scenario could hand back a page of rows and the
+// run would receive none — then replay identically and report green. The cross-check compares a
+// run against its own replay and therefore cannot see this class of loss at all; this can.
+const io = createIO();
+const answered = io.perform({ type: "LOAD_MORE", correlationId: "c_io" });
+await io.answer(0, { data: page2 });
+assertEqual(await answered, { data: page2 },
+  "the IO stub hands `data` through — a scenario's answer reaches the engine intact");
 
 console.log(`\nengine — the source and its ${engineCopies.length - 1} copies:`);
 assert(identical("runtime.ts"), "runtime.ts matches engine/runtime.ts everywhere it lands");
