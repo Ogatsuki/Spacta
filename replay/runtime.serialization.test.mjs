@@ -25,6 +25,8 @@ import { createRecorder, createRuntime } from "../starter/src/shared/spacta/runt
 import * as moderation from "../../livingdoc/src/features/moderation/core.ts";
 import * as saved from "../../livingdoc/src/features/saved/core.ts";
 import * as pageview from "../../livingdoc/src/features/pageview/core.ts";
+import * as draft from "../../livingdoc/src/features/draft/core.ts";
+import * as watchlist from "../../livingdoc/src/features/watchlist/core.ts";
 import { createIO, legacyRun } from "./drivers.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -614,6 +616,128 @@ assertEqual(posted.pending, [], "and the write is retired once the key has lande
 const postedBlind = await pageviewRun(() => null, postTrace("temp_2", "c_p2"));
 assertEqual(postedBlind.traces.map((t) => t.id), ["temp_2"],
   "an answer carrying no data leaves the placeholder alone rather than erasing it");
+
+// Compensation. `mutate` found this unprotected: deleting the whole EFFECT_FAILED body left
+// every gate green, because a page that keeps showing a trace the server rejected is just as
+// reproducible as one that removes it.
+const postRejected = await pageviewRun(() => ({ fail: "Request failed (500)" }), postTrace("temp_3", "c_p3"));
+assertEqual(postRejected.traces.map((t) => t.id), [],
+  "a rejected post takes the optimistic trace back off the page");
+assertEqual(postRejected.notice, "Request failed (500)",
+  "and the failure lives in state, so the broken run replays from (state, action) alone");
+assertEqual(postRejected.pending, [], "and nothing is left claiming to be in flight");
+
+// ───────────────────────── 10. the two features `mutate` found unwatched ──────────────────
+// `tools/mutate.mjs` breaks the round trip of every T3 feature and reports what no gate
+// noticed. On its first run, 5 of 10 mutations survived, and `draft` and `watchlist` accounted
+// for four of them: neither had a single behavioural assertion anywhere. Both declare T3 — they
+// carry a correlationId and write both outcome cases — so `verify` had nothing to complain
+// about, and the cross-check replayed the broken behaviour as faithfully as the correct one.
+//
+// These are the assertions those mutations should have failed against.
+
+async function runFeature(feature, initData, answer, actions) {
+  const runtime = createRuntime({
+    init: () => feature.init(initData),
+    update: feature.update,
+    perform: async (effect) => {
+      const reply = answer(effect);
+      if (reply && reply.fail) throw new Error(reply.fail);
+      return reply ?? null;
+    },
+  });
+  for (const action of actions) runtime.dispatch(action);
+  await sleep(60);
+  return { state: runtime.getState(), runtime };
+}
+
+// ── draft: an autosaving compose screen ──
+const READER = { id: "u_reader", username: "reader", avatarUrl: "", role: "user", suspended: false };
+const DRAFT_INIT = {
+  viewer: READER,
+  loginHref: "/login",
+  materials: [
+    {
+      id: "m_rust",
+      slug: "rust-book",
+      name: "The Rust Programming Language",
+      pages: [
+        { id: "p_ownership", slug: "ch04-01", number: "4.1", title: "What is Ownership?",
+          canonicalUrl: "", traceCount: 1, lastActivityAt: null },
+      ],
+    },
+  ],
+  saved: null,
+};
+const compose = (body) => [
+  { type: "SET_MATERIAL", value: "m_rust" },
+  { type: "SET_PAGE", value: "p_ownership" },
+  { type: "SET_BODY", value: body },
+];
+const draftRun = (answer, actions) => runFeature(draft, DRAFT_INIT, answer, actions);
+
+console.log("\ndraft — autosave and submit, both answers:");
+
+const autosaved = await draftRun(() => null, [...compose("A first pass at ownership."), { type: "REQUEST_SAVE", correlationId: "c_d1" }]);
+assertEqual(autosaved.state.saveStatus, "saved", "a confirmed autosave is what moves the status, not the request");
+assertEqual(autosaved.state.saveError, "", "and clears any earlier error");
+assertEqual(draft.isDirty(autosaved.state), false, "the saved snapshot is recorded, so the screen is no longer dirty");
+assertEqual(autosaved.state.pending, [], "and the save is retired");
+
+const saveFailed = await draftRun(() => ({ fail: "Request failed (500)" }),
+  [...compose("Text that must survive a failed save."), { type: "REQUEST_SAVE", correlationId: "c_d2" }]);
+assertEqual(saveFailed.state.saveStatus, "error", "a rejected autosave says so");
+assertEqual(saveFailed.state.saveError, "Request failed (500)", "and carries the reason");
+assertEqual(saveFailed.state.body, "Text that must survive a failed save.",
+  "and touches nothing the reader wrote — a failed save must never cost text");
+assertEqual(draft.isDirty(saveFailed.state), true, "the draft is still dirty, so the next save will retry it");
+
+// The late answer. The reader kept typing while the save was away, so the answer confirms the
+// snapshot that was *sent*, not what is on screen now. Marking the newer text clean would claim
+// the server holds something it has never seen.
+const late = await draftRun(() => null, [...compose("First."), { type: "REQUEST_SAVE", correlationId: "c_d3" }]);
+late.runtime.dispatch({ type: "SET_BODY", value: "First. And then more." });
+await sleep(20);
+const afterTyping = late.runtime.getState();
+assertEqual(afterTyping.lastSaved.body, "First.",
+  "an autosave confirms the snapshot it was sent with, not the text that arrived while it was away");
+assertEqual(draft.isDirty(afterTyping), true, "so the newer text is still dirty and will be saved in its turn");
+
+const submitted = await draftRun(() => null, [...compose("A trace worth posting."), { type: "SUBMIT", correlationId: "c_d4" }]);
+assertEqual(submitted.state.posted, true, "a confirmed submit is what marks the trace live");
+assertEqual(submitted.state.pending, [], "and retires the write");
+
+const submitFailed = await draftRun(() => ({ fail: "Request failed (500)" }),
+  [...compose("A trace the server refuses."), { type: "SUBMIT", correlationId: "c_d5" }]);
+assertEqual(submitFailed.state.posted, false, "a rejected submit does not claim the trace is live");
+assertEqual(submitFailed.state.notice, "Request failed (500)", "and says why");
+assertEqual(submitFailed.state.body, "A trace the server refuses.", "leaving the form exactly as it was, so it can be retried");
+
+// ── watchlist: optimistic removal, and putting it back ──
+const watched = (pageId, title) => ({
+  page: {
+    materialSlug: "rust-book", materialName: "The Rust Programming Language", materialCanonicalUrl: "",
+    pageId, pageSlug: pageId, pageNumber: "4.1", pageTitle: title, canonicalUrl: "",
+  },
+  traceCount: 3,
+});
+const WATCHLIST_INIT = { viewer: READER, items: [watched("p_a", "Ownership"), watched("p_b", "Borrowing")] };
+const pages = (state) => state.items.map((i) => i.page.pageId);
+const watchRun = (answer, actions) => runFeature(watchlist, WATCHLIST_INIT, answer, actions);
+const unwatch = (pageId, correlationId) => ({ type: "REMOVE_WATCH", pageId, correlationId });
+
+console.log("\nwatchlist — an optimistic removal, confirmed and rejected:");
+
+const unwatched = await watchRun(() => null, [unwatch("p_a", "c_w1")]);
+assertEqual(pages(unwatched.state), ["p_b"], "a confirmed removal leaves the page off the list");
+assertEqual(unwatched.state.pending, [], "and retires the write");
+assertEqual(unwatched.state.notice, "", "a success says nothing");
+
+const unwatchFailed = await watchRun(() => ({ fail: "Request failed (500)" }), [unwatch("p_a", "c_w2")]);
+assertEqual(pages(unwatchFailed.state), ["p_a", "p_b"],
+  "a rejected removal puts the page back, and back in the position it held");
+assertEqual(unwatchFailed.state.notice, "Request failed (500)", "under a notice saying why");
+assertEqual(unwatchFailed.state.pending, [], "and nothing is left claiming to be in flight");
 
 console.log(`\nengine — the source and its ${engineCopies.length - 1} copies:`);
 assert(identical("runtime.ts"), "runtime.ts matches engine/runtime.ts everywhere it lands");
