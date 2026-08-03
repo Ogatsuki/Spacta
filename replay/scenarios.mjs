@@ -186,7 +186,7 @@ export const SCENARIOS = [
         correlationId: "c_a1",
         body: "It clicked when I stopped thinking about the stack.",
       });
-      await io.settleAll({ outcome: () => ({ id: "srv_trace_a1" }) });
+      await io.settleAll({ outcome: () => ({ data: { id: "srv_trace_a1" } }) });
       d.pageview.rerender();
       d.pageview.dispatch({ type: "TOGGLE_SPOT", key: SPOT });
     },
@@ -268,7 +268,7 @@ export const SCENARIOS = [
       }
       await io.settleAll({
         outcome: (index) =>
-          index === 1 ? { fail: "Request failed (500)" } : { id: `srv_trace_d${index + 1}` },
+          index === 1 ? { fail: "Request failed (500)" } : { data: { id: `srv_trace_d${index + 1}` } },
       });
     },
   },
@@ -287,7 +287,7 @@ export const SCENARIOS = [
         correlationId: "c_e1",
         body: "Written on the twenty-sixth, by two seconds.",
       });
-      await io.settleAll({ outcome: () => ({ id: "srv_trace_e1" }) });
+      await io.settleAll({ outcome: () => ({ data: { id: "srv_trace_e1" } }) });
       p.rerender();
       post(p, {
         now: "2026-07-27T00:00:01.000Z",
@@ -295,7 +295,7 @@ export const SCENARIOS = [
         correlationId: "c_e2",
         body: "Written on the twenty-seventh, by one.",
       });
-      await io.settleAll({ outcome: () => ({ id: "srv_trace_e2" }) });
+      await io.settleAll({ outcome: () => ({ data: { id: "srv_trace_e2" } }) });
     },
   },
 
@@ -374,7 +374,7 @@ export const SCENARIOS = [
         correlationId: "c_g1",
         body: "A trace that will be saved, then voted on, then reported.",
       });
-      await io.settleAll({ outcome: () => ({ id: "srv_trace_g1" }) });
+      await io.settleAll({ outcome: () => ({ data: { id: "srv_trace_g1" } }) });
       p.rerender();
       p.dispatch(vote("c_g2", "srv_trace_g1"));
       p.dispatch({ type: "OPEN_REPORT", targetType: "trace", targetId: "t_borrow" });

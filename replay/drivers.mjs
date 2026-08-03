@@ -109,7 +109,7 @@ export function legacyRun({ initData, init, update, perform }) {
       try {
         const result = await perform(effect);
         if (effect.correlationId) {
-          outcome = { type: "EFFECT_SUCCEEDED", correlationId: effect.correlationId, id: result?.id };
+          outcome = { type: "EFFECT_SUCCEEDED", correlationId: effect.correlationId, data: result?.data };
         }
       } catch (error) {
         if (effect.correlationId) {
@@ -180,21 +180,18 @@ export function createIO() {
   }
 
   /**
-   * `perform` may hand back two things: an `id` the server assigned, and `data` a read answered
-   * with. Both have to survive the stub. Resolving with `{ id }` alone — which this did until a
-   * feature actually read something — would drop a page of rows between here and the engine, and
-   * the scenario would pass green having carried nothing. `.mjs` is not type-checked, so nothing
-   * else would have said so.
+   * `perform` hands back exactly one thing: `data`, whatever the feature that asked said its
+   * answer looks like — a server-assigned id, a page of rows, either. It has to survive the
+   * stub. Resolving with `{ id }` alone — which this did while the engine had a second field
+   * for it — would drop a page of rows between here and the engine, and the scenario would pass
+   * green having carried nothing. `.mjs` is not type-checked, so nothing else would have said so.
    */
   function settle(index, answer) {
     const call = calls[index];
     call.done = true;
     if (answer && answer.fail) return call.reject(new Error(answer.fail));
-    if (!answer || (answer.id === undefined && answer.data === undefined)) return call.resolve(null);
-    const result = {};
-    if (answer.id !== undefined) result.id = answer.id;
-    if (answer.data !== undefined) result.data = answer.data;
-    call.resolve(result);
+    if (!answer || answer.data === undefined) return call.resolve(null);
+    call.resolve({ data: answer.data });
   }
 
   return {
@@ -217,9 +214,9 @@ export function createIO() {
 
     /**
      * Answer everything, including the Effects that are born from the answers, until the run has
-     * nothing left in flight. `outcome(index, effect)` returns `{ id }` or `{ fail: message }`.
+     * nothing left in flight. `outcome(index, effect)` returns `{ data }` or `{ fail: message }`.
      */
-    async settleAll({ order = "arrival", outcome = (index) => ({ id: `srv_${index + 1}` }) } = {}) {
+    async settleAll({ order = "arrival", outcome = (index) => ({ data: { id: `srv_${index + 1}` } }) } = {}) {
       for (let guard = 0; guard < 100; guard++) {
         await quiet();
         const open = calls.map((call, index) => index).filter((index) => !calls[index].done);

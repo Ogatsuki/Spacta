@@ -24,6 +24,7 @@ import { fileURLToPath } from "node:url";
 import { createRecorder, createRuntime } from "../starter/src/shared/spacta/runtime.ts";
 import * as moderation from "../../livingdoc/src/features/moderation/core.ts";
 import * as saved from "../../livingdoc/src/features/saved/core.ts";
+import * as pageview from "../../livingdoc/src/features/pageview/core.ts";
 import { createIO, legacyRun } from "./drivers.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -95,7 +96,7 @@ function update(state, action) {
       return [
         {
           ...state,
-          writes: [...state.writes, `${write.key}:${action.id}`],
+          writes: [...state.writes, `${write.key}:${action.data?.id}`],
           pending: state.pending.filter((w) => w.correlationId !== action.correlationId),
         },
         [],
@@ -122,8 +123,8 @@ function update(state, action) {
 
 function outOfOrderPerform() {
   const deferred = [defer(), defer()];
-  setTimeout(() => deferred[1].resolve({ id: "server-2" }), 5);
-  setTimeout(() => deferred[0].resolve({ id: "server-1" }), 30);
+  setTimeout(() => deferred[1].resolve({ data: { id: "server-2" } }), 5);
+  setTimeout(() => deferred[0].resolve({ data: { id: "server-1" } }), 30);
   let taken = 0;
   const perform = async (effect) => {
     if (effect.type === "PING") return null;
@@ -526,7 +527,7 @@ assertEqual(loadFailed.state.notice, "Request failed (500)", "and says why, thro
 // An answer that arrives with no rows attached — what a transport that dropped `data` looks
 // like from inside Core. It must not read as "the list ended", because that is indistinguishable
 // from success and is exactly how a silent loss would survive every replay.
-const loadEmpty = await savedRun(() => ({ id: "srv_1" }), [load("c_s1")]);
+const loadEmpty = await savedRun(() => ({}), [load("c_s1")]);
 assertEqual(ids(loadEmpty.state), ["t_s1", "t_s2"], "an answer carrying no data appends nothing");
 assertEqual(loadEmpty.state.notice, "Could not load more saved traces.",
   "and says so, instead of looking like the end of the list");
@@ -554,6 +555,65 @@ const answered = io.perform({ type: "LOAD_MORE", correlationId: "c_io" });
 await io.answer(0, { data: page2 });
 assertEqual(await answered, { data: page2 },
   "the IO stub hands `data` through — a scenario's answer reaches the engine intact");
+
+// ───────────────────────── 9. the key a write answers with, in a real feature ──────────────
+// The reason an answer channel exists at all. A trace posted optimistically carries a `tempId`
+// the server has never heard of, and everything the reader does to it next — vote, comment,
+// report — addresses that id. Exchanging it for the real one is the most load-bearing use of an
+// Effect's answer in this application, and until v0.11 it travelled on a field of its own
+// (`id?: string`) that the engine copied and never read.
+//
+// Nothing checked it. Planting `const id = undefined` in pageview's EFFECT_SUCCEEDED left the
+// cross-check at 14 green checks and this file at 45 passing assertions: a trace that keeps its
+// placeholder forever is perfectly deterministic, so a replay agrees with it completely. That is
+// the same blind spot moderation's compensation was asserted against, on the path that matters
+// most, and it was open for as long as the field existed.
+
+const PAGEVIEW_INIT = {
+  now: "2026-07-26T09:00:00.000Z",
+  viewer: { id: "u_reader", username: "reader", avatarUrl: "", role: "user", suspended: false },
+  page: SAVED_PAGE,
+  loginHref: "/login",
+  traces: [],
+  prev: null,
+  next: null,
+  watching: false,
+};
+
+async function pageviewRun(answer, actions) {
+  const runtime = createRuntime({
+    init: () => pageview.init(PAGEVIEW_INIT),
+    update: pageview.update,
+    perform: async (effect) => {
+      const reply = answer(effect);
+      if (reply && reply.fail) throw new Error(reply.fail);
+      return reply ?? null;
+    },
+  });
+  for (const action of actions) runtime.dispatch(action);
+  await sleep(60);
+  return runtime.getState();
+}
+
+/** What a reader does to post: open the composer, type, submit. Three Actions. */
+const postTrace = (tempId, correlationId) => [
+  { type: "OPEN_COMPOSER", quote: "" },
+  { type: "SET_DRAFT_BODY", value: "A trace posted before the server had named it." },
+  { type: "SUBMIT_TRACE", now: "2026-07-26T09:01:00.000Z", tempId, correlationId },
+];
+
+console.log("\npageview — the key a write answers with:");
+
+const posted = await pageviewRun(() => ({ data: { id: "srv_trace_1" } }), postTrace("temp_1", "c_p1"));
+assertEqual(posted.traces.map((t) => t.id), ["srv_trace_1"],
+  "the optimistic tempId is exchanged for the key the database assigned");
+assertEqual(posted.pending, [], "and the write is retired once the key has landed");
+
+// An answer that names the write but carries nothing must leave the placeholder alone. Blanking
+// it would be worse than never adopting: a trace whose id is `undefined` addresses nothing.
+const postedBlind = await pageviewRun(() => null, postTrace("temp_2", "c_p2"));
+assertEqual(postedBlind.traces.map((t) => t.id), ["temp_2"],
+  "an answer carrying no data leaves the placeholder alone rather than erasing it");
 
 console.log(`\nengine — the source and its ${engineCopies.length - 1} copies:`);
 assert(identical("runtime.ts"), "runtime.ts matches engine/runtime.ts everywhere it lands");

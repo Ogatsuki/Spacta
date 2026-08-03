@@ -15,10 +15,10 @@ The bundled `../verify/verify.mjs` operates assuming this structure:
 | `app/layout.tsx` | Common frame for all pages. Features only draw the inner content. | §2.5 (Layouts Go Up) |
 | `tailwind.config.ts` | The sole source of presentation primitives (`theme.extend`) such as colors, margins, and border-radius. | L8 (Presentation Purity) source |
 | `src/shared/ui/*` | Presentation primitives that do not know feature names. Variants are co-located using `tailwind-variants`. | L7 (Reverse Dependency Prevention) |
-| `src/shared/types.ts` | `EffectResult` transport contract + `assertNever` helper. No `Effect` union — that belongs to each feature. | L4 (Exhaustiveness) |
-| `src/shared/runEffect.ts` | The transport (`post`). HTTP, and nothing about what is being sent — mechanism, not vocabulary. | L7 (Reverse Dependency Prevention) |
+| `src/shared/types.ts` | `assertNever` helper, and nothing else. Neither the `Effect` union nor the answer type belongs here — both are each feature's own. | L4 (Exhaustiveness) |
+| `src/shared/runEffect.ts` | The transport (`post`). HTTP, generic in what comes back, naming no field — mechanism, not vocabulary. | L7 (Reverse Dependency Prevention) |
 | `src/shared/source.ts` | The "edge" for reading time and IO (neither Core nor Page). | Escape hatch for L3 (Injection) / L5 (Source Purity) |
-| `src/features/sample/types.ts` | `InitData` / `State` / `Action` / `Effect` discriminated unions — this feature's whole membrane vocabulary. | — |
+| `src/features/sample/types.ts` | `InitData` / `State` / `Action` / `Effect` discriminated unions, plus `Answer` — this feature's whole membrane vocabulary and the shape of its replies. | — |
 | `src/features/sample/core.ts` | Pure `init` / `update` / `summarize` (no IO, `now` is injected). | L2 (Purity) / L3 (Injection) |
 | `src/features/sample/perform.ts` | This feature's IO — the switch that turns *its own* Effects into requests. | L1 (Isolation) / L4 (Exhaustiveness) |
 | `src/features/sample/shell.tsx` | Thin shell containing only state wiring. | L1 (Isolation) / L4 (Exhaustiveness) |
@@ -30,6 +30,7 @@ Key points that trip up new AIs:
   Writing `new Date()` in `core.ts` flags red under L2 (Purity). Writing it in `page.tsx` flags red under L5 (Source Purity). Put it in the edge (`source.ts`/`shell.tsx`).
 - **An Effect switch belongs in the feature's own `perform.ts`.** Writing a handwritten switch on `effect.type` in `shell.tsx` flags red under L4 (Exhaustiveness). Do not put one back in `shared/runEffect.ts` either: a shared switch makes one feature's vocabulary everybody's dependency, which is exactly what declaring `Effect` per feature removed.
 - **Never write your own effect loop.** `useSpacta` hands the queue to the engine in `shared/spacta`, which is the only caller of `perform` and turns *every* outcome into an Action — including the answer to an Effect that asked for nothing. A loop written twice is a loop that disagrees with itself.
+- **There is one channel for an answer, and the feature names its shape.** Declare `Answer` in your own `types.ts`, pass it as the fourth argument to `useSpacta`, and it arrives as `action.data` on `EFFECT_SUCCEEDED`. A server-assigned id and a page of rows travel the same way — do not add a second field for one of them.
 - **Cross-feature imports are restricted.** Importing the internals of an adjacent feature flags red under L1 (Isolation). Always go through `@/shared` or stay local to the feature.
 - **Raise common frames and vocabulary.** Extract common layouts and layout-agnostic presentation vocabulary. Feature-specific look-and-feel should be confined within `components/`.
 - **Avoid hardcoding layout or presentation values directly in shells or components.** First, use the `theme.extend` vocabulary in `tailwind.config.ts` (e.g., `bg-primary`).

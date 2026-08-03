@@ -11,13 +11,16 @@
  * changes it, and this does not. Copying it into each feature would be the reinvention the
  * engine exists to prevent.
  *
+ * It is generic in what comes back and names no field of its own. The shape of an answer is
+ * declared by the feature that asked the question — see `features/sample/types.ts` — and this
+ * only proves the bytes parsed.
+ *
  * Contract, unchanged: return data on success, throw on failure. Never swallow an error and
  * never touch state from here — the engine turns both outcomes into Actions, so Core stays the
  * only writer of state and the run stays replayable from the Action log alone (L3).
  */
-import { EffectResult } from "./types";
 
-export async function post(url: string, payload: unknown): Promise<EffectResult | null> {
+export async function post<T = never>(url: string, payload: unknown): Promise<T | null> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -30,5 +33,5 @@ export async function post(url: string, payload: unknown): Promise<EffectResult 
   // Endpoints that assign nothing answer 204 with no body; there is no result to carry.
   const contentType = res.headers.get("content-type") ?? "";
   if (res.status === 204 || !contentType.includes("application/json")) return null;
-  return (await res.json()) as EffectResult;
+  return (await res.json()) as T;
 }

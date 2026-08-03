@@ -15,10 +15,12 @@ import { CounterActions } from "./components/CounterActions";
 import { CounterSummary } from "./components/CounterSummary";
 import { init, summarize, update } from "./core";
 import { perform } from "./perform";
-import type { Action, Effect, InitData, State } from "./types";
+import type { Action, Answer, Effect, InitData, State } from "./types";
 
 export function SampleShell({ initData }: { initData: InitData }) {
-  const [state, dispatch] = useSpacta<State, Action, Effect>({
+  // The fourth type argument is this feature's answer shape. Leave it off and `perform` may
+  // hand nothing back; name it and the answer arrives as `data` on EFFECT_SUCCEEDED.
+  const [state, dispatch] = useSpacta<State, Action, Effect, Answer>({
     init: () => init(initData),
     update,
     perform,

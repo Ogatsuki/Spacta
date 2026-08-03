@@ -34,6 +34,15 @@ export type Effect =
   | { type: "SAVE"; correlationId: string; key: string; value: string }
   | { type: "LOG"; message: string };
 
+// What this feature's Effects answer with. Declared here, next to the question, because the
+// engine passes it through as a type parameter and never looks inside: the shape of an answer
+// belongs to whoever asked. A shared answer type would have to name every feature's reply in
+// one file — the coupling declaring `Effect` per feature already removed.
+//
+// Here it is the key the database assigned to the saved row. A read would put its rows in the
+// same place; there is one channel, not one per kind of answer.
+export type Answer = { id: string };
+
 // Entry point of write path: Shell → Action → Core.update
 export type Action =
   | { type: "INCREMENT"; now: string; correlationId: string }
@@ -44,5 +53,8 @@ export type Action =
   // correlationId is nullable because the engine answers for *every* Effect it performs, and
   // LOG never asked a question. Core reads null as "no write of mine is being spoken about"
   // and says so in a case of its own — a sentence, not a branch the loop takes on its behalf.
-  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; id?: string }
+  //
+  // `data` is where the server's answer lands, typed `Answer` by this feature. It is optional
+  // because LOG answers with nothing at all — an Effect that asked no question has none.
+  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; data?: Answer }
   | { type: "EFFECT_FAILED"; correlationId: string | null; message: string };

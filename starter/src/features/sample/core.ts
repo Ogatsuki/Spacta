@@ -33,10 +33,11 @@ export function update(state: State, action: Action): [State, Effect[]] {
       return [next, [{ type: "LOG", message: "reset" }]];
     }
     case "EFFECT_SUCCEEDED": {
-      // The server's answer arrives as data. Anything it assigned (here, action.id) is injected,
-      // never generated in Core (L3) — this is where an optimistic placeholder id is replaced.
-      // A null correlationId is the answer to an Effect that asked nothing (LOG): it confirms
-      // no write, so it retires no pending write either.
+      // The server's answer arrives as `action.data`, injected and never generated in Core (L3).
+      // This counter has nothing to adopt an id into, so it only retires the write; a feature
+      // holding optimistic rows reads `action.data?.id` here and swaps its placeholder for the
+      // real key. A null correlationId is the answer to an Effect that asked nothing (LOG): it
+      // confirms no write, so it retires no pending write either.
       if (action.correlationId === null) return [state, []];
       const next: State = { ...state, pending: state.pending.filter((c) => c !== action.correlationId) };
       return [next, []];

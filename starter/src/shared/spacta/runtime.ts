@@ -51,8 +51,16 @@ export type EffectSource = { type: string; correlationId?: string };
  * Effect union already has and the one this is trying not to repeat.
  *
  * It defaults to `never`, so a feature that only writes says nothing about answers at all.
+ *
+ * There was a second field here until v0.11: `id?: string`, from the version when a write's
+ * only conceivable answer was the key the database assigned. It was never mechanism — the
+ * engine copied it and never read it — and once `R` existed it was one more way to say what
+ * `data` already said, in a file that is supposed to branch on no domain concept whatsoever.
+ * A feature that wants the server's key now declares `R = { id: string }` and receives it the
+ * same way a paginated read receives its rows. Do not add a second channel back: two ways to
+ * answer is how the loop that was written three times came to disagree with itself.
  */
-export type Perform<E, R = never> = (effect: E) => Promise<{ id?: string; data?: R } | null | undefined>;
+export type Perform<E, R = never> = (effect: E) => Promise<{ data?: R } | null | undefined>;
 
 /**
  * The return path of a write, as Actions.
@@ -66,12 +74,13 @@ export type Perform<E, R = never> = (effect: E) => Promise<{ id?: string; data?:
  * nothing at all without anybody noticing. A feature that has no use for an unidentified
  * answer now has to write that down as a case — silence becomes a sentence.
  *
- * `data` carries what a read answered with, and it is typed by the feature that asked. The
- * engine never inspects it. A feature that only writes leaves `R` at its default of `never`
- * and the field is unusable, which is the honest shape for a question that was not asked.
+ * `data` carries whatever the answer was — a server-assigned id, a page of rows, anything the
+ * feature named — and it is typed by the feature that asked. The engine never inspects it. A
+ * feature that only writes leaves `R` at its default of `never` and the field is unusable,
+ * which is the honest shape for a question that was not asked.
  */
 export type EffectOutcome<R = never> =
-  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; id?: string; data?: R }
+  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; data?: R }
   | { type: "EFFECT_FAILED"; correlationId: string | null; message: string };
 
 /** One running feature instance. The state lives in here, not in a closure. */
@@ -197,7 +206,7 @@ export function createRuntime<S, A, E extends EffectSource, R = never>(opts: {
           const result = await opts.perform(effect); // IO is isolated in perform (L4).
           // `data` rides along untouched. `JSON.stringify` drops it when it is undefined, so a
           // feature that answers with nothing records exactly the session it recorded before.
-          outcome = { type: "EFFECT_SUCCEEDED", correlationId, id: result?.id, data: result?.data };
+          outcome = { type: "EFFECT_SUCCEEDED", correlationId, data: result?.data };
         } catch (error) {
           outcome = { type: "EFFECT_FAILED", correlationId, message: messageOf(error) };
         }

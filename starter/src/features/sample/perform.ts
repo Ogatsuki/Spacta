@@ -17,15 +17,17 @@
  */
 import { post } from "@/shared/runEffect";
 import { assertNever } from "@/shared/types";
-import type { EffectResult } from "@/shared/types";
-import type { Effect } from "./types";
+import type { Answer, Effect } from "./types";
 
-export async function perform(effect: Effect): Promise<EffectResult | null> {
+export async function perform(effect: Effect): Promise<{ data?: Answer } | null> {
   switch (effect.type) {
-    case "SAVE":
-      // The `{ id }` that comes back is assigned by the server's database, never invented here
-      // and never in Core (L3/L5). The engine puts it on an EFFECT_SUCCEEDED Action.
-      return post("/api/sample", { key: effect.key, value: effect.value });
+    case "SAVE": {
+      // The id that comes back is assigned by the server's database, never invented here and
+      // never in Core (L3/L5). It rides to Core as `data` on an EFFECT_SUCCEEDED Action —
+      // the same channel a read would use for its rows, because there is only one.
+      const answer = await post<Answer>("/api/sample", { key: effect.key, value: effect.value });
+      return answer && { data: answer };
+    }
     case "LOG":
       console.log(effect.message);
       return null; // An Effect with no correlationId has no answer to carry back.
