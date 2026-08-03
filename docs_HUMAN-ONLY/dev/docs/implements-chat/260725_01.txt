@@ -1,0 +1,21 @@
+livingdoc/ に MVP を一式構築しました。要件定義書の F1〜F7 を全部実装し、Spacta の掟に沿わせています。
+
+検証したこと
+- bun run verify → Green（L1–L8 + 検証器自身の self-test、違反 0・info 0）
+- bunx tsc --noEmit → エラー 0 / bun run build → 全 17 ルート成功
+- ローカル D1 を立てて dev サーバーで実地確認: サインイン → 痕跡投稿 → コメント → 投票 → 報告 → 管理画面で非表示、まで一通り通過。未ログイン投稿は 401、不正な type は 400、二重投票は 1 行のまま、非表示にした痕跡はページから消えることも確認済み
+
+中核の作り
+- 三層モデルのうち スポットはテーブルを持たず pageview/core.ts の純関数が引用文から導出。正規化（大小・空白・記号を吸収）＋包含マージで、「2文貼った人」と「その1文だけ貼った人」が同じスポットに合流します。POST /api/traces が保存する quote_key も同じ関数を通すので、保存と表示がズレません（実地テストで、表記の揺れた引用が既存スポットに合流するのを確認）
+- IO は src/shared/source/* のみ、Effect の実行は runEffect 一箇所。core.ts は async も時刻も持てず、AST 検証が物理的に弾きます
+- Cloudflare Workers + D1（@opennextjs/cloudflare）。$10/月 制約に合わせた構成で、デプロイ手順は README に記載
+
+分担：私が全体設計・膜の語彙・純粋コア・シェル・サーバー境界（page/route）と DB スキーマを担当し、小さいモデルに UI プリミティブ、各 feature の表示コンポーネント 22 個、教材カタログの SQL を並列で投げました。
+
+1点修正が要りました：カタログ担当が出した Rust Book の章立てが 2024 edition 前の番号（OOP=17章）でした。旧 URL はリダイレクトで生きているものの表示番号が古くなるため、上流の SUMMARY.md から 110 ページを生成し直しています（現在は 17=Async, 18=OOP, 21=Final Project）。合計 214 ページ。
+
+未着手として残したもの（README にも明記）：検索は FTS でなく LIKE、Rustlings は上流に安定した個別 URL が無いため全行がサイトルート、教材リクエストの承認は「印を付ける」までで教材追加自体は SQL 挿入。
+
+なお /home/_9fkaw/Projects/living-document は git リポジトリではないため、コミットはしていません（livingdoc/ を git init して初期コミットを作るなら言って/seed-demo.sql にあり、ローカルDB は現在カタログのみのクリーンな状態です。
+
+result: Living Document MVP を livingdoc/ に構築完了 — Spacta verify Green・tsc 0 エラー・build 成功、投稿/投票/モ 済み
