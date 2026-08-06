@@ -1,6 +1,280 @@
 # Changelog
 
-## Unreleased (0.9.4) — Laws speak in roles
+## 0.11 — A feature's vocabulary goes back to the feature
+
+**Zero new Laws.** `SPACTA.md` still holds ten, and the reference app's `shared/types.ts` went
+from **195 lines to 37**.
+
+0.10 gave every feature one engine to run its Effects through. What it did not revisit was the
+reason the shared vocabulary existed at all: one switch needs one union, and one union puts one
+feature's words in everybody's dependency. The engine reads `type` and `correlationId` off an
+Effect and nothing else — the union had already stopped earning its place, and nothing noticed.
+
+Three moves, in order. **Effects go to the feature that declares them. The answer goes with
+them. The read models stop sharing a file with the contract.**
+
+The criterion that came out of it is the part worth keeping, because the v0.9-era writing did
+not have one and cited the shared union as a success:
+
+> **Does it change when you add a feature?**
+> No → *mechanism* (`post`, `createRuntime`, the name→role table). Condense it.
+> Yes → *vocabulary* (`Effect`, `Answer`). Do not. It belongs to the feature.
+
+A shared declaration was never protecting two screens that write the same row — the endpoint
+couples them, and changing `/api/bookmarks` breaks both either way. The declaration only made
+the coupling look managed.
+
+### Breaking
+
+- **The shared `Effect` union is gone.** A feature declares its Effects in its own `types.ts`
+  and carries them out in its own `perform.ts`, which sits beside it. Ten of livingdoc's
+  thirteen members had no business being shared — seven had a single constructor, `RELOAD` and
+  `LOG` had none at all, `NAVIGATE` carries no domain payload. The three genuinely built by two
+  features are now **written out on both sides** (§2: duplication over coupling). `measure`
+  reports the price as a number instead of an impression: `effectUnion` names where each member
+  is declared, how many remain shared (`0`), and which tags are declared twice. It is not a
+  number to drive to zero.
+- **L4 gained a second termination form.** `assertNever` needs a union of two or more, and
+  TypeScript collapses a one-element union — three of livingdoc's six effect-declaring features
+  have exactly one Effect, a shape that could not arise while the application had one switch
+  with thirteen members. A `switch` with no `default`, written as the last statement of a
+  function whose declared return type excludes `undefined`, is checked by tsc instead: an
+  unhandled member is TS2366. All three conditions carry weight, and each has a fixture that
+  removes exactly one of them.
+- **`Perform`'s `id?: string` is absorbed into `data?: R`.** The two said the same thing, `id`
+  being the older of the pair from the version when a write's only conceivable answer was a
+  database key. The engine copied it at one line and never read it; `verify` never knew it
+  existed, so **no Law moves** — this is the engine dropping a field, not Spacta changing a
+  rule. Ten features carried it and exactly one read it. `EffectResult` leaves
+  `shared/types.ts`. Features now declare `Answer` themselves and read `action.data`; the five
+  that never read a key say so by declaring nothing and returning `Promise<null>`, a shape that
+  could not previously be written down.
+- **Two blocking checks that are not Laws.** A project with `react` or `next` under
+  `shared/spacta/`, or a feature importing the data layer, turns red on upgrade. See *Added*.
+- **`measure` gained a `readModel` zone, so the numbers discontinue here by design.**
+  `contract` drops 195 → 37 for livingdoc and a key appears that earlier snapshots do not have.
+  Nothing reads `metrics/baseline/*.json`, so no gate breaks; the older records describe a
+  different shape and should be read as such.
+- **The tier ladder stops failing a feature that broke no rule.** `judgeTier` tested for an
+  `InitData` parameter before it tested for a shell, so a read-only screen fell off the first
+  rung — found by a real feature, not by inspection. Without a shell a feature is `T1` whether
+  or not it takes an `InitData`: a missing `InitData` is not an unchecked injection, it is the
+  absence of anything to inject, and L2 and L9 reach a helper-only core just as far. `T?` is
+  **narrowed, not retired** — it now means a feature that has a shell and no readable state
+  machine. Two self-test cases pin both sides, because *"T? was abolished"* and *"T? was
+  correctly narrowed"* are otherwise indistinguishable.
+
+### Added
+
+- **An Effect may answer with data, not only an id.** `R` threads an answer shape from the
+  feature, through the engine, into the outcome Action; the engine does not look inside it, just
+  as it does not look inside `E`. A type parameter rather than a member of a shared union **on
+  purpose** — a shared one would name every feature's answer in a single file, which is the
+  coupling this release spent itself removing. `R` defaults to `never`, so a write-only feature
+  says nothing, and all ten features compiled unchanged.
+
+  Until now a feature could write but never read: the only road for more data was a fresh
+  `InitData`, and `RELOAD` had no constructor in any of livingdoc's ten features — the escape
+  hatch had never been used. `saved` now performs `LOAD_MORE`, **the first read any feature does
+  after its page has loaded**, and the recorder logs the answer, because a replay cannot re-fetch
+  and a flight recorder that dropped it would rebuild a screen the user never saw.
+- **`tools/mutate.mjs`** — *"a check nobody has watched fail is not a check"*, mechanized. It
+  asks `verify` which features declare a closed round trip (`T3`), breaks that round trip in each
+  of them, runs the behavioural gates, and reports what **survived**.
+
+  First run against livingdoc: **10 mutations across 5 T3 features, 5 survived.** `draft` and
+  `watchlist` had no behavioural assertion at all; `pageview`'s compensation had none either.
+  All three declare T3, so `verify` had nothing to say. The sharper number is which gate did the
+  killing: **`crosscheck` killed none of the ten.** It compares a run against its own replay, so
+  a feature that is wrong but deterministic passes every scenario — its own header says so, and
+  this measures it. Every kill came from `runtime.serialization`, which asserts states.
+
+  `verify` is run each time and never counted as a killer; its green printed beside a `SURVIVED`
+  line is the honest picture. `tsc` is deliberately excluded — the inserted `return` makes the
+  rest of the case unreachable, so tsc would appear to catch a mutation it merely noticed the
+  shape of. It restores in `finally`, snapshots `replay-sessions/` around the run, and refuses to
+  place a mutation it cannot place uniquely rather than guessing. **Exit 1 is a measurement, not
+  a failure.**
+- **`engine-portability` and `data-layer-import`** (`law: "—"`, `severity: "err"`) — the first
+  blocking checks that are not Laws. Both properties were held up by prose alone, both were
+  planted, and both went straight through: `react` added to `engine/runtime.ts` left `verify`
+  green on both corpora and `vendor-sync` copied it to three places without a word; a feature
+  importing `shared/source` left `verify` green at exit 0, when the only way to know was a `grep`
+  somebody remembered to run.
+
+  Neither is an eleventh Law — one is a design promise made by a single file, the other is a
+  sentence `SPACTA.md` §3 already asserts as fact. They print on their own line so a green cannot
+  be read as claiming an unnumbered law:
+
+  ```
+  ✓ Laws (L1, L2, L3, L4, L5, L7, L9, L10): No violations
+  ✓ Blocking checks that are not Laws (engine-portability, data-layer-import): No violations
+  ```
+
+  `engine-portability` **fails closed**: it walks everything under `shared/spacta/` except
+  `react.ts`, so a new engine file is covered the day it appears rather than the day someone
+  remembers to list it. `data-layer-import` **rejects `import type` too** — a type-only import
+  vanishes at compile time, which is exactly why this went unnoticed; what it costs is a reader
+  sent into `shared/source` to understand `saved/types.ts`, and that reference range is what the
+  check is standing in for.
+- **`engine/` is the source, and `tools/vendor-sync.mjs` applies it.** The engine existed in
+  three places with no source among them, held together by a byte-identity assertion that
+  catches a divergence after the fact and cannot say which copy was right. The assertion now
+  compares against `engine/`, so the repair has a direction, and `--check` exits 1 on a stale
+  copy. It covers the vendored verifier and corpus too — the larger duplication the engine's
+  third copy was a symptom of: `livingdoc/verify/` is 35 files that 0.10 found still on v0.9.x,
+  missing L3, L9, L10 and roles, gone stale with no signal at all. **Vendoring is the author's
+  decision for now; a package would replace all of this and is deferred, not refused.**
+- **`SPACTA.md` §3 — Scope.** Three facts an adopter previously had to find by reading the
+  source: fetching and persistence are not Spacta's and two features reading the same table are
+  coupled where no Law looks (`measure`'s `spread` keeps that hole countable); an Effect brings
+  back an identifier, not a page of data; and one feature instance performs one Effect at a
+  time — the serialization that makes a run reproducible from `(initData, actions[])`, paid for
+  in concurrency, which was written down nowhere.
+- **`docs_HUMAN-ONLY/dev/docs/`** — 32 files, 596K. Every judgement that shaped 0.10 and 0.11,
+  including which invariants turned out to have no check behind them, had been living outside
+  any repository while the code it described was tracked.
+
+### Changed
+
+- **`runtime.serialization`: 45 → 48 → 72 assertions.** The middle step is `pageview` adopting
+  the id the database assigns; the last is what `mutate`'s five survivors should have been
+  failing against all along. `draft`'s late answer is the one worth reading: a save leaves with a
+  snapshot, the reader keeps typing while it is away, and the answer confirms *the snapshot that
+  was sent*. Marking the newer text clean would claim the server holds something it has never
+  seen, and the screen would then stop offering to save it. The comment in `draft/types.ts`
+  described exactly this and nothing checked it. `mutate ../livingdoc` now reports **10 killed,
+  0 survived**.
+- **The starter no longer teaches the shape this release replaced.** `sample` declares its own
+  Effects and performs them; `shared/runEffect.ts` keeps `post`, which is mechanism and nobody's
+  vocabulary. Doing this first was what closed a verification hole: `roleCoverage` skips a role
+  with no files, so `feature-internal` — which claims L1 and L4, and which every `perform.ts`
+  lands in — **had never been weighed against anything.** The file carrying a feature's entire
+  IO sat in the one role whose law claims were unchecked. Demonstrated in both directions before
+  restoring: with `perform.ts` present, a false claim is caught by name at exit 1; with it moved
+  away, the same lie passes green.
+- **The replay stub carries a read's answer.** `settle()` resolved every call as `{ id }`, so a
+  scenario could hand back a page of rows and the run would receive none — then replay
+  identically and report green. `S10` drives a real post-load read, then a removal that fails on
+  a row which was never in `initData`, so compensation has to restore it.
+- **`S7` was exercising the wrong path.** `scenarios.mjs` is `.mjs` and nothing typechecks it;
+  once `MODERATE` carried an identifier the scenario quietly started testing the late-answer
+  guard instead of compensation. Fixed, `S9` added, and moderation's states asserted in
+  `runtime.serialization` rather than left to the cross-check.
+- **The public surface says what version this is.** `package.json` said 0.9.3 while README and
+  OVERVIEW said "v0.9 early feedback release"; all three now say 0.11. References to 0.9.x that
+  describe *when something changed* are left alone. README gained a note that the tooling runs
+  under either runtime — the scripts keep saying `node` so the verifier stays usable in projects
+  without bun, and the tools spawn themselves with `process.execPath`.
+- **`SPACTA.md` §3 stopped contradicting the release it shipped in.** *"An Effect brings back an
+  id, not data. A feature cannot fetch after the page has loaded"* was written earlier in this
+  version, before `R` existed, and `saved`'s `LOAD_MORE` then made it false — the scope section
+  denying a feature this release had just added. It now states what actually holds: the answer is
+  shaped by `R`, which the asking feature declares as its own `Answer`; **what a feature may not
+  do is reach IO anywhere else** (L2 in Core, L9 in components); and a whole new screenful is
+  still an `InitData`. §3 was the newest section in the file, which is where a sentence written a
+  few commits too early is hardest to see. The file is still 79 lines.
+- **`shared/types.ts` 195 → 37** for livingdoc, the 179 lines of read models moving to their own
+  file and their own `measure` zone. The engine is 316 lines, up from the 292 it held across five
+  snapshots — spent deliberately on `R`, and spent there so that the contract did not have to
+  move at all.
+
+### Known gaps
+
+- **`mutate` sees two cases per T3 feature and nothing else.** Effect construction, validation,
+  the *contents* of a compensation (whether it restores the right row), rendering and the data
+  layer are untouched by these mutations. `0 survived` is not a statement about any of them.
+- **`crosscheck` kills nothing, and now that is measured rather than asserted.** It establishes
+  reproducibility, not correctness. Behaviour goes in `runtime.serialization` as state
+  assertions.
+- **Nothing has run.** `verify`, `tsc`, the cross-check and the serialization test all execute the
+  engine and five features' `core.ts`. Every `shell.tsx`, every `components/`, the contents of
+  every `perform.ts`, every `route.ts` and all of `queries.ts` — the SQL included — have never
+  been executed by anything. This is the largest open item at 0.11 and it is not a design
+  question.
+- **No package.** `npm create` does not work; `starter/` has no `node_modules`. Deferred until a
+  second application says what should actually be distributed.
+- **Coupling through data is untouched** and remains the largest known gap, as it has since 0.9.4.
+
+## 0.10 — One runtime, and a claim that can be measured
+
+0.9.1–0.9.4 closed the distance between what a Law *declared* and what the verifier *walked*.
+This version leaves the verifier and goes after two things a verifier structurally cannot reach:
+**the loop each feature had been writing by hand**, and **the central claim itself**, which had
+never been measured.
+
+### Breaking
+
+- **The hand-written drain is gone from `starter/`.** It carried the same loop livingdoc had
+  grown three divergent copies of, under a comment admitting it showed *"the correct shape, not a
+  finished runtime"*. The shape is now a runtime: `src/shared/spacta/runtime.ts`, byte-identical
+  between starter and the app. A project that copied starter's loop should adopt the runtime —
+  two of the three copies in the field were discarding the server's answer, with `verify` green
+  throughout.
+- **State leaves the shell.** `useSpacta` holds it and mints `now` and ids; what remains in a
+  shell is JSX wiring, state into props and callbacks into `dispatch`.
+
+### Added
+
+- **`replay/` — the cross-check.** It drives livingdoc's real `core.ts` through the real engine
+  with `perform` stubbed, rebuilds the run from the session file using `init` and `update` alone,
+  and compares every intermediate state, the states published to subscribers, and the final one.
+  `S1`–`S8` aim at the theorem's clauses (2) and (3). `S2` and `S3` also run against a
+  transcription of the pre-engine shell loop, which **diverges at Action #1 and #5** — the
+  before/after evidence that serialization landed.
+- **`harness.selftest.mjs`.** It plants divergences the harness must reject: a dropped Action
+  with the trace trimmed so only the state comparison can catch it, a duplicated Action, a
+  mid-run divergence that converges again, `Date.now()` and `Math.random()` inside `update`, and
+  a `State` smuggled into a session file. L6's lesson one level up.
+- **`metrics/measure.mjs`.** Zones by file and line, the Effect union with which feature
+  constructs each member, `spread` (per shared export, who imports it), and the tiers — which it
+  **asks `verify` for** rather than judging itself, because a second copy of that ladder would be
+  the same meaning re-implemented slightly differently. Deterministic, no AI, JSON on stdout, and
+  kept out of `verify`: green means the Laws are kept, not that the numbers are good. *Detection
+  is `verify`, measurement is `measure`, transformation is `garden`.*
+
+  **It refuses to report rather than report something rotten.** A file under `src/` or the app
+  router that lands in no zone stops the run — no greedy catch-all exists to sweep it up — as do
+  recorded sessions reaching a zone, and absent tiers. Exclusions are named in the output, which
+  is how livingdoc's bundled `verify/` corpus is visibly not in the tally.
+- **The tier ladder, `T0`–`T3`, printed on every `verify` run.** A project that adopted Spacta
+  part-way used to get a green covering nothing of what it skipped: `materialrequest` and
+  `moderation` declared Effects whose answers they discarded, and because those Effects carry no
+  `correlationId`, L3's receptacle check never fired. **A tier is never red and never touches the
+  exit code** — T1 and T2 are legitimate, and forcing a round trip on a feature that does not need
+  one trains people to reach for the ignore list. Saying it out loud is the fix. Verified in two
+  layers, because fixtures alone pass a judgement wired to nothing and a corpus alone passes a
+  judgement that always answers T3.
+- **`SPACTA.md` §4-3 — "do not write your own effect loop"**, the instruction whose absence let
+  the loop be written three times. L3's enforcement column now names what actually holds the
+  outbound half (the engine dispatches every outcome, tsc's exhaustiveness forces a case,
+  `verify`'s receptacle check behind them), and L4 says why a feature does not switch on
+  `effect.type` at all. No new Law.
+
+### Measured
+
+livingdoc went from six features to ten, with a snapshot at each step (`metrics/01..04.json`,
+plus the baseline):
+
+- **The engine zone is 292 lines in all five snapshots.** Four features arrived, two of them
+  needing the write-path round trip, and it moved by nothing.
+- **`shared/` stayed at 27 files throughout** — it grew in lines, never in file count — so its
+  share of the tree fell from **32.5% to 25%**.
+- **`contract` went 209 → 256 lines and the Effect union 9 → 13 members.** That is the growth L4
+  and L7 made *structural*, and it is what 0.11 went after.
+
+### Known gaps
+
+- **The cross-check compares a run against its own replay.** A feature that is wrong but
+  deterministic passes every scenario. Stated in its own header at this version; measured in 0.11,
+  where it killed 0 of 10 planted mutations.
+- **`livingdoc/verify/` was a v0.9.x copy** without L3, L9, L10 or roles — synced byte-for-byte
+  here, but a vendored copy still goes stale silently. Given a source and a `--check` in 0.11.
+- **Clause (4) of the theorem is unverifiable in-process.** Coupling through a shared table never
+  appears in an Action log, and every cross-check run prints that first among what it does not
+  verify.
+
+## 0.9.4 — Laws speak in roles
 
 0.9.3 patched L5 to look in `src/app/` as well as `app/`. That closed one instance and not the
 class: `layout.tsx`, `error.tsx`, `middleware.ts` and every convention Next.js has not shipped

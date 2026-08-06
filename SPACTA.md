@@ -63,7 +63,7 @@ Details of the Form and Judgment are decided contextually by you. The primary me
 Spacta governs how one screen behaves after it has loaded. Some things are deliberately outside that, and knowing which is which saves you from hunting for a rule that does not exist.
 
 *   **Fetching and persistence are not Spacta's.** `shared/source/*` is imported by `app/**` — the server boundary — and by nothing else; no feature imports it. Data reaches a feature as `InitData`, once, at `init()`. Two features reading the same table are coupled, and no Law here sees that coupling. It is a declared hole rather than an oversight: `npm run measure` reports the `spread` of each shared symbol so the hole stays countable.
-*   **An Effect brings back an id, not data.** A feature cannot fetch after the page has loaded. More data arrives as a new `InitData` — a navigation, or a reload — never as the answer to an Effect.
+*   **An Effect's answer is typed by the feature that asked.** A feature may read after the page has loaded: `perform` returns `data`, and it reaches Core as an Action — shaped by `R`, which that feature declares as its own `Answer` and nobody else names. What a feature may not do is reach IO anywhere else: not from Core (L2), not from a component (L9). A whole new screenful is still an `InitData` — a navigation, or a reload — not an Effect.
 *   **One feature instance performs one Effect at a time.** The runtime serializes: an Action dispatched while an Effect is in flight waits behind it and is never applied to a stale state. That is what makes a run reproducible from `(initData, actions[])`, and it is paid for in concurrency — two independent writes from the same feature do not overlap.
 
 ---

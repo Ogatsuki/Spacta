@@ -27,6 +27,9 @@ is the one they keep using.
 If you're an AI agent, read only the rulebook below.
 
 **[SPACTA.md](SPACTA.md)**
+**[spacta-decisions.md](spacta-decisions.md)**
+**[spacta-open-questions.md](spacta-open-questions.md)**
+****
 
 *Note: Do not read `docs_HUMAN-ONLY/` unless explicitly instructed, as it contains human-centric prose that may pollute your attention context.*
 
