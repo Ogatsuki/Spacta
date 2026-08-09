@@ -2,6 +2,8 @@
 
 *Also available in: [日本語](ja/HUMAN_GUIDE.md)*
 
+*Important: This English document is quite old and may lead to miss-understanding of Spacta structure. To get the latest information, go to the Japanese document or wait for update*
+
 Welcome to Spacta. This guide outlines how Spacta lets each feature of your app live in its own bounded context — so neither you nor the AI ever has to hold the whole app in your head — and mechanically proves that boundary holds.
 
 ---
