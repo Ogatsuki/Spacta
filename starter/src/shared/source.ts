@@ -1,13 +1,13 @@
 /**
- * source = 本物のIOを行う「縁」。Core でも server page(page.tsx) でもないので
- * verify(L2/L5) の対象外＝ここで時刻・通信を読んでよい唯一の場所のひとつ。
- * page.tsx はこの関数を呼ぶだけにして、page.tsx 自体に new Date() を書かない（L5）。
+ * source = Boundary for performing real IO. Not Core or server page (page.tsx),
+ * so outside verify scope (L2/L5) = one of the only places where you can read time/communication.
+ * page.tsx calls this function only; page.tsx itself doesn't write new Date() (L5).
  */
 export function readNow(): string {
   return new Date().toISOString();
 }
 
-// 実データ取得もここに置く（例）。await fetch(...) / prisma などは縁で行う。
+// Also place real data fetching here (example). await fetch(...) / prisma, etc. are done at the boundary.
 export async function fetchInitialCount(): Promise<number> {
   return 0;
 }

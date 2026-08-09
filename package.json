@@ -1,11 +1,17 @@
 {
   "name": "spacta",
-  "version": "1.0.0",
+  "version": "0.11.0",
   "description": "Spacta — Pure-boundary architecture physically enforced by AST static verification",
   "private": true,
   "scripts": {
-    "verify": "node verify/verify.mjs .",
-    "garden": "node garden/garden.mjs ."
+    "verify": "node verify/verify.mjs starter",
+    "verify:starter": "node verify/verify.mjs starter",
+    "garden": "node garden/garden.mjs starter",
+    "measure": "node metrics/measure.mjs starter",
+    "measure:starter": "node metrics/measure.mjs starter",
+    "measure:livingdoc": "node metrics/measure.mjs ../livingdoc",
+    "vendor:sync": "node tools/vendor-sync.mjs",
+    "vendor:check": "node tools/vendor-sync.mjs --check"
   },
   "devDependencies": {
     "typescript": "^5"

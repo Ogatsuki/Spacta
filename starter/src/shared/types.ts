@@ -1,14 +1,16 @@
 /**
- * 共有型（types.ts）= 唯一隔離できない共有予算。小さく保つ（verify が行数を見張る）。
- * Effect は「Coreが出す宣言」。実行は shared/runEffect.ts だけが担う（L4）。
+ * Shared types (types.ts) = The only non-isolated shared budget. Keep it small (verify watches line count).
+ *
+ * What is *not* here is the `Effect` union, and what is no longer here is the answer type.
+ * Each feature declares both in `features/<name>/types.ts`, beside the `perform.ts` that carries
+ * them out, so neither one feature's vocabulary nor the shape of its replies becomes everybody's
+ * dependency. A shared `EffectResult = { id?: string }` used to live here and taught the wrong
+ * lesson: that the only thing a write can be told is a database key.
+ *
+ * What remains is the guard that turns a forgotten Effect into a compile error.
  */
 
-// Core が「やってほしいIO」を宣言する値。実行はしない（膜を越えるのはデータだけ）。
-export type Effect =
-  | { type: "SAVE"; key: string; value: string }
-  | { type: "LOG"; message: string };
-
-// 網羅性の番人。switch の default で呼べば、Effect 追加時に「足し忘れ」が型エラーになる。
+// Exhaustiveness guard. Call in switch default so "forgetting to add" becomes a type error when Effect is extended.
 export function assertNever(x: never): never {
-  throw new Error(`未処理のケース: ${JSON.stringify(x)}`);
+  throw new Error(`Unhandled case: ${JSON.stringify(x)}`);
 }

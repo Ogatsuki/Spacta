@@ -1,0 +1,907 @@
+{
+  "target": "livingdoc",
+  "repo": "livingdoc",
+  "commit": "74f7bd2d2e1b8f52c94a3c5178a5877f15cf7d14",
+  "dirty": false,
+  "featureCount": 9,
+  "zones": {
+    "feature": {
+      "files": 52,
+      "lines": 3723
+    },
+    "engine": {
+      "files": 2,
+      "lines": 292
+    },
+    "contract": {
+      "files": 1,
+      "lines": 249
+    },
+    "sharedUi": {
+      "files": 15,
+      "lines": 401
+    },
+    "dataAdapter": {
+      "files": 7,
+      "lines": 1178
+    },
+    "sharedOther": {
+      "files": 2,
+      "lines": 124
+    },
+    "framework": {
+      "files": 22,
+      "lines": 751
+    }
+  },
+  "effectUnion": {
+    "members": 12,
+    "constructors": {
+      "DELETE_DRAFT": [
+        "draft"
+      ],
+      "LOG": [],
+      "MODERATE": [
+        "moderation"
+      ],
+      "NAVIGATE": [
+        "draft",
+        "materialrequest",
+        "pageview"
+      ],
+      "RELOAD": [],
+      "SAVE_COMMENT": [
+        "pageview"
+      ],
+      "SAVE_DRAFT": [
+        "draft"
+      ],
+      "SAVE_MATERIAL_REQUEST": [
+        "materialrequest"
+      ],
+      "SAVE_REPORT": [
+        "pageview"
+      ],
+      "SAVE_TRACE": [
+        "draft",
+        "pageview"
+      ],
+      "SET_BOOKMARK": [
+        "pageview",
+        "saved"
+      ],
+      "SET_VOTE": [
+        "pageview"
+      ]
+    }
+  },
+  "spread": [
+    {
+      "symbol": "textError",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/admin",
+        "app/api/auth/callback",
+        "app/api/auth/login",
+        "app/api/bookmarks",
+        "app/api/comments",
+        "app/api/drafts",
+        "app/api/material-requests",
+        "app/api/reports",
+        "app/api/traces",
+        "app/api/votes"
+      ]
+    },
+    {
+      "symbol": "readViewer",
+      "file": "shared/source/session.ts",
+      "consumers": [
+        "app",
+        "app/admin",
+        "app/m/[material]/[page]",
+        "app/request",
+        "app/saved",
+        "app/search",
+        "app/type/[type]",
+        "app/u/[username]",
+        "app/write"
+      ]
+    },
+    {
+      "symbol": "Badge",
+      "file": "shared/ui/Badge.tsx",
+      "consumers": [
+        "catalog",
+        "draft",
+        "moderation",
+        "pageview",
+        "profile",
+        "saved",
+        "search",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "readJson",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/admin",
+        "app/api/bookmarks",
+        "app/api/comments",
+        "app/api/drafts",
+        "app/api/material-requests",
+        "app/api/reports",
+        "app/api/traces",
+        "app/api/votes"
+      ]
+    },
+    {
+      "symbol": "readNow",
+      "file": "shared/source/ids.ts",
+      "consumers": [
+        "app",
+        "app/admin",
+        "app/m/[material]",
+        "app/m/[material]/[page]",
+        "app/saved",
+        "app/search",
+        "app/type/[type]",
+        "app/u/[username]"
+      ]
+    },
+    {
+      "symbol": "readString",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/admin",
+        "app/api/bookmarks",
+        "app/api/comments",
+        "app/api/drafts",
+        "app/api/material-requests",
+        "app/api/reports",
+        "app/api/traces",
+        "app/api/votes"
+      ]
+    },
+    {
+      "symbol": "EmptyState",
+      "file": "shared/ui/EmptyState.tsx",
+      "consumers": [
+        "app/search",
+        "app/type/[type]",
+        "app/u/[username]",
+        "catalog",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "Viewer",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "profile",
+        "saved",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "formatRelative",
+      "file": "shared/time.ts",
+      "consumers": [
+        "catalog",
+        "moderation",
+        "pageview",
+        "profile",
+        "saved",
+        "search",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "requirePoster",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/bookmarks",
+        "app/api/comments",
+        "app/api/drafts",
+        "app/api/material-requests",
+        "app/api/reports",
+        "app/api/traces",
+        "app/api/votes"
+      ]
+    },
+    {
+      "symbol": "Button",
+      "file": "shared/ui/Button.tsx",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "Card",
+      "file": "shared/ui/Card.tsx",
+      "consumers": [
+        "catalog",
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview"
+      ]
+    },
+    {
+      "symbol": "Effect",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "Quote",
+      "file": "shared/ui/Quote.tsx",
+      "consumers": [
+        "pageview",
+        "profile",
+        "saved",
+        "search",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "TraceType",
+      "file": "shared/types.ts",
+      "consumers": [
+        "app/api/drafts",
+        "app/api/traces",
+        "draft",
+        "pageview",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "runEffect",
+      "file": "shared/runEffect.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "useSpacta",
+      "file": "shared/spacta/react.ts",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "moderation",
+        "pageview",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "Avatar",
+      "file": "shared/ui/Avatar.tsx",
+      "consumers": [
+        "moderation",
+        "pageview",
+        "profile",
+        "saved"
+      ]
+    },
+    {
+      "symbol": "ExternalLink",
+      "file": "shared/ui/ExternalLink.tsx",
+      "consumers": [
+        "catalog",
+        "moderation",
+        "pageview",
+        "profile"
+      ]
+    },
+    {
+      "symbol": "TraceWithPage",
+      "file": "shared/types.ts",
+      "consumers": [
+        "profile",
+        "saved",
+        "search",
+        "tracetype"
+      ]
+    },
+    {
+      "symbol": "PageSummary",
+      "file": "shared/types.ts",
+      "consumers": [
+        "catalog",
+        "draft",
+        "pageview"
+      ]
+    },
+    {
+      "symbol": "SectionHeading",
+      "file": "shared/ui/SectionHeading.tsx",
+      "consumers": [
+        "app",
+        "app/search",
+        "app/type/[type]"
+      ]
+    },
+    {
+      "symbol": "Stat",
+      "file": "shared/ui/Stat.tsx",
+      "consumers": [
+        "catalog",
+        "pageview",
+        "profile"
+      ]
+    },
+    {
+      "symbol": "TextArea",
+      "file": "shared/ui/TextArea.tsx",
+      "consumers": [
+        "draft",
+        "materialrequest",
+        "pageview"
+      ]
+    },
+    {
+      "symbol": "VoteTargetType",
+      "file": "shared/types.ts",
+      "consumers": [
+        "app/api/reports",
+        "app/api/votes",
+        "pageview"
+      ]
+    },
+    {
+      "symbol": "Author",
+      "file": "shared/types.ts",
+      "consumers": [
+        "pageview",
+        "profile"
+      ]
+    },
+    {
+      "symbol": "MaterialSummary",
+      "file": "shared/types.ts",
+      "consumers": [
+        "catalog",
+        "search"
+      ]
+    },
+    {
+      "symbol": "ModerationCommand",
+      "file": "shared/types.ts",
+      "consumers": [
+        "app/api/admin",
+        "moderation"
+      ]
+    },
+    {
+      "symbol": "jsonCreated",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/comments",
+        "app/api/traces"
+      ]
+    },
+    {
+      "symbol": "listMaterials",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app",
+        "app/search"
+      ]
+    },
+    {
+      "symbol": "pageExists",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/drafts",
+        "app/api/traces"
+      ]
+    },
+    {
+      "symbol": "safeRedirect",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/auth/callback",
+        "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "startSession",
+      "file": "shared/source/session.ts",
+      "consumers": [
+        "app/api/auth/callback",
+        "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "traceExists",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/bookmarks",
+        "app/api/comments"
+      ]
+    },
+    {
+      "symbol": "upsertUser",
+      "file": "shared/source/github.ts",
+      "consumers": [
+        "app/api/auth/callback",
+        "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "ActivityItem",
+      "file": "shared/types.ts",
+      "consumers": [
+        "catalog"
+      ]
+    },
+    {
+      "symbol": "AdminReport",
+      "file": "shared/types.ts",
+      "consumers": [
+        "moderation"
+      ]
+    },
+    {
+      "symbol": "AdminRequest",
+      "file": "shared/types.ts",
+      "consumers": [
+        "moderation"
+      ]
+    },
+    {
+      "symbol": "AdminUser",
+      "file": "shared/types.ts",
+      "consumers": [
+        "moderation"
+      ]
+    },
+    {
+      "symbol": "AppShell",
+      "file": "shared/ui/AppShell.tsx",
+      "consumers": [
+        "app"
+      ]
+    },
+    {
+      "symbol": "LinkButton",
+      "file": "shared/ui/LinkButton.tsx",
+      "consumers": [
+        "pageview"
+      ]
+    },
+    {
+      "symbol": "MaterialWithPages",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft"
+      ]
+    },
+    {
+      "symbol": "PageRef",
+      "file": "shared/types.ts",
+      "consumers": [
+        "pageview"
+      ]
+    },
+    {
+      "symbol": "SavedDraft",
+      "file": "shared/types.ts",
+      "consumers": [
+        "draft"
+      ]
+    },
+    {
+      "symbol": "TextInput",
+      "file": "shared/ui/TextInput.tsx",
+      "consumers": [
+        "materialrequest"
+      ]
+    },
+    {
+      "symbol": "TraceRecord",
+      "file": "shared/types.ts",
+      "consumers": [
+        "pageview"
+      ]
+    },
+    {
+      "symbol": "applyModeration",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/admin"
+      ]
+    },
+    {
+      "symbol": "beginOAuth",
+      "file": "shared/source/github.ts",
+      "consumers": [
+        "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "consumeOAuthState",
+      "file": "shared/source/github.ts",
+      "consumers": [
+        "app/api/auth/callback"
+      ]
+    },
+    {
+      "symbol": "deleteDraft",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/drafts"
+      ]
+    },
+    {
+      "symbol": "devProfile",
+      "file": "shared/source/github.ts",
+      "consumers": [
+        "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "endSession",
+      "file": "shared/source/session.ts",
+      "consumers": [
+        "app/api/auth/logout"
+      ]
+    },
+    {
+      "symbol": "exchangeCodeForProfile",
+      "file": "shared/source/github.ts",
+      "consumers": [
+        "app/api/auth/callback"
+      ]
+    },
+    {
+      "symbol": "getDraft",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/write"
+      ]
+    },
+    {
+      "symbol": "getMaterial",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/m/[material]"
+      ]
+    },
+    {
+      "symbol": "getNeighbourPages",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/m/[material]/[page]"
+      ]
+    },
+    {
+      "symbol": "getPageRef",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/m/[material]/[page]"
+      ]
+    },
+    {
+      "symbol": "getUserByUsername",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/u/[username]"
+      ]
+    },
+    {
+      "symbol": "hasGithubAuth",
+      "file": "shared/source/env.ts",
+      "consumers": [
+        "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "insertComment",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/comments"
+      ]
+    },
+    {
+      "symbol": "insertMaterialRequest",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/material-requests"
+      ]
+    },
+    {
+      "symbol": "insertReport",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/reports"
+      ]
+    },
+    {
+      "symbol": "insertTrace",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/traces"
+      ]
+    },
+    {
+      "symbol": "isDevLoginEnabled",
+      "file": "shared/source/env.ts",
+      "consumers": [
+        "app/api/auth/login"
+      ]
+    },
+    {
+      "symbol": "listActiveUsers",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/admin"
+      ]
+    },
+    {
+      "symbol": "listBookmarkedTraces",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/saved"
+      ]
+    },
+    {
+      "symbol": "listMaterialRequests",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/admin"
+      ]
+    },
+    {
+      "symbol": "listMaterialsWithPages",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/write"
+      ]
+    },
+    {
+      "symbol": "listPages",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/m/[material]"
+      ]
+    },
+    {
+      "symbol": "listRecentActivity",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app"
+      ]
+    },
+    {
+      "symbol": "listReports",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/admin"
+      ]
+    },
+    {
+      "symbol": "listTracesByType",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/type/[type]"
+      ]
+    },
+    {
+      "symbol": "listTracesByUser",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/u/[username]"
+      ]
+    },
+    {
+      "symbol": "listTracesForPage",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/m/[material]/[page]"
+      ]
+    },
+    {
+      "symbol": "requireAdmin",
+      "file": "shared/source/guard.ts",
+      "consumers": [
+        "app/api/admin"
+      ]
+    },
+    {
+      "symbol": "saveDraft",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/drafts"
+      ]
+    },
+    {
+      "symbol": "searchTraces",
+      "file": "shared/source/queries.ts",
+      "consumers": [
+        "app/search"
+      ]
+    },
+    {
+      "symbol": "setBookmark",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/bookmarks"
+      ]
+    },
+    {
+      "symbol": "setVote",
+      "file": "shared/source/mutations.ts",
+      "consumers": [
+        "app/api/votes"
+      ]
+    },
+    {
+      "symbol": "CommentRecord",
+      "file": "shared/types.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Dispatch",
+      "file": "shared/spacta/react.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "EffectOutcome",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "EffectResult",
+      "file": "shared/types.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "EffectSource",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "GithubProfile",
+      "file": "shared/source/github.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Mint",
+      "file": "shared/spacta/react.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Perform",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Poster",
+      "file": "shared/source/guard.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Recorder",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "Runtime",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "SiteFooter",
+      "file": "shared/ui/SiteFooter.tsx",
+      "consumers": []
+    },
+    {
+      "symbol": "SiteHeader",
+      "file": "shared/ui/SiteHeader.tsx",
+      "consumers": []
+    },
+    {
+      "symbol": "Update",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "assertNever",
+      "file": "shared/types.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "countRecentPosts",
+      "file": "shared/source/mutations.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "createRecorder",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "createRuntime",
+      "file": "shared/spacta/runtime.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "formatDate",
+      "file": "shared/time.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "getAppOrigin",
+      "file": "shared/source/env.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "getDb",
+      "file": "shared/source/env.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "getEnv",
+      "file": "shared/source/env.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "newId",
+      "file": "shared/source/ids.ts",
+      "consumers": []
+    },
+    {
+      "symbol": "newToken",
+      "file": "shared/source/ids.ts",
+      "consumers": []
+    }
+  ],
+  "tiers": {
+    "catalog": "T1",
+    "draft": "T3",
+    "materialrequest": "T2",
+    "moderation": "T2",
+    "pageview": "T3",
+    "profile": "T1",
+    "saved": "T3",
+    "search": "T1",
+    "tracetype": "T?"
+  },
+  "excluded": [
+    {
+      "path": "app/globals.css",
+      "files": 1,
+      "why": "inside a zoned root but not a TypeScript source (.ts/.tsx) file"
+    },
+    {
+      "path": "replay-sessions/",
+      "files": 12,
+      "why": "recorded replay sessions: neither src/ nor app/, excluded from every zone"
+    },
+    {
+      "path": "verify/",
+      "files": 50,
+      "why": "outside the zoned roots (src/ and the app router): holds .ts/.tsx that no zone counts"
+    }
+  ]
+}

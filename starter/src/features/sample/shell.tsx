@@ -1,33 +1,46 @@
 /**
- * shell.tsx = UI と IO の縁（client）。枠は layout/shared-ui へ上げ、
- * ここには state 配線と Action 変換だけを残す。
+ * shell.tsx = Boundary between UI and IO (client). The frame is moved to layout/shared-ui and
+ * the Effect loop lives in shared/spacta/runtime.ts, so what is left here is JSX wiring only:
+ * state into props, callbacks into dispatch.
+ *
+ * Do not write your own effect loop. useSpacta hands the queue to the engine, which performs
+ * every Effect through this feature's own `perform` and feeds every outcome back in as an
+ * Action — including the outcome of an Effect that carries no correlationId. Non-determinism
+ * (now, ids) is minted by the binding adapter and reaches Core as values (L3); Core generates
+ * none of it.
  */
 "use client";
-import { useState } from "react";
-import { runEffect } from "@/shared/runEffect";
+import { useSpacta } from "@/shared/spacta/react";
 import { CounterActions } from "./components/CounterActions";
 import { CounterSummary } from "./components/CounterSummary";
 import { init, summarize, update } from "./core";
-import type { Action, InitData, State } from "./types";
+import { perform } from "./perform";
+import type { Action, Answer, Effect, InitData, State } from "./types";
 
 export function SampleShell({ initData }: { initData: InitData }) {
-  const [state, setState] = useState<State>(() => init(initData));
+  // The fourth type argument is this feature's answer shape. Leave it off and `perform` may
+  // hand nothing back; name it and the answer arrives as `data` on EFFECT_SUCCEEDED.
+  const [state, dispatch] = useSpacta<State, Action, Effect, Answer>({
+    init: () => init(initData),
+    update,
+    perform,
+  });
   const summary = summarize(state);
-
-  // 非決定性(now)は Shell(縁)で生成し、値として Core へ渡す（L3）。Core は生成しない。
-  async function dispatch(make: (now: string) => Action) {
-    const action = make(new Date().toISOString());
-    const [next, effects] = update(state, action);
-    setState(next);
-    for (const e of effects) await runEffect(e); // 実行は runEffect に隔離（L4）
-  }
 
   return (
     <section className="space-y-6">
-      <CounterSummary count={state.count} lastTouched={state.lastTouched} summary={summary} />
+      <CounterSummary
+        count={state.count}
+        lastTouched={state.lastTouched}
+        summary={summary}
+        pending={state.pending.length}
+        notice={state.notice}
+      />
       <CounterActions
-        onIncrement={() => dispatch((now) => ({ type: "INCREMENT", now }))}
-        onReset={() => dispatch((now) => ({ type: "RESET", now }))}
+        onIncrement={() =>
+          dispatch((mint) => ({ type: "INCREMENT", now: mint.now, correlationId: mint.id() }))
+        }
+        onReset={() => dispatch((mint) => ({ type: "RESET", now: mint.now }))}
       />
     </section>
   );

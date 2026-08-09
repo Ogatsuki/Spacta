@@ -3,7 +3,7 @@
 A minimal project template measured and confirmed to be **100% compliant** under `npm run verify`.
 It serves as the default reference template to jump-start Phase 0 bootstrap and prevent development drift. It represents the default *Form* described in `SPACTA.md` §2.
 The bundled `../verify/verify.mjs` operates assuming this structure:
-`app/layout.tsx` + `src/shared/{ui,runEffect,source}` + `src/features/<name>/{types,core,shell,components}` + `app/**/page.tsx`.
+`app/layout.tsx` + `src/shared/{ui,runEffect,source}` + `src/features/<name>/{types,core,perform,shell,components}` + `app/**/page.tsx`.
 
 > **The purpose of this starter is to prevent developers and AIs from writing verification tooling from scratch.** A finished verifier is pre-bundled in the `verify/` directory.
 > Your focus should be on implementing features, not reinventing AST validation scripts (`SPACTA.md` §0/§3).
@@ -15,11 +15,12 @@ The bundled `../verify/verify.mjs` operates assuming this structure:
 | `app/layout.tsx` | Common frame for all pages. Features only draw the inner content. | §2.5 (Layouts Go Up) |
 | `tailwind.config.ts` | The sole source of presentation primitives (`theme.extend`) such as colors, margins, and border-radius. | L8 (Presentation Purity) source |
 | `src/shared/ui/*` | Presentation primitives that do not know feature names. Variants are co-located using `tailwind-variants`. | L7 (Reverse Dependency Prevention) |
-| `src/shared/types.ts` | `Effect` union + `assertNever` helper. | L4 (Exhaustiveness) |
-| `src/shared/runEffect.ts` | The **only** place where Effects are executed (switch + `assertNever`). | L4 (Exhaustiveness) |
+| `src/shared/types.ts` | `assertNever` helper, and nothing else. Neither the `Effect` union nor the answer type belongs here — both are each feature's own. | L4 (Exhaustiveness) |
+| `src/shared/runEffect.ts` | The transport (`post`). HTTP, generic in what comes back, naming no field — mechanism, not vocabulary. | L7 (Reverse Dependency Prevention) |
 | `src/shared/source.ts` | The "edge" for reading time and IO (neither Core nor Page). | Escape hatch for L3 (Injection) / L5 (Source Purity) |
-| `src/features/sample/types.ts` | `InitData` / `State` / `Action` discriminated unions. | — |
+| `src/features/sample/types.ts` | `InitData` / `State` / `Action` / `Effect` discriminated unions, plus `Answer` — this feature's whole membrane vocabulary and the shape of its replies. | — |
 | `src/features/sample/core.ts` | Pure `init` / `update` / `summarize` (no IO, `now` is injected). | L2 (Purity) / L3 (Injection) |
+| `src/features/sample/perform.ts` | This feature's IO — the switch that turns *its own* Effects into requests. | L1 (Isolation) / L4 (Exhaustiveness) |
 | `src/features/sample/shell.tsx` | Thin shell containing only state wiring. | L1 (Isolation) / L4 (Exhaustiveness) |
 | `src/features/sample/components/*` | Feature-specific UI components. Localized without fear of duplication. | §2.5 (Components Go In) |
 | `app/page.tsx` | Server Page. Only reads values from `source` and calls the `shell`. | L5 (Source Purity) |
@@ -27,7 +28,9 @@ The bundled `../verify/verify.mjs` operates assuming this structure:
 Key points that trip up new AIs:
 - **Do not generate time inside Core.** `source.readNow()` reads it at the edge, and passes it as `InitData.now` (L3).
   Writing `new Date()` in `core.ts` flags red under L2 (Purity). Writing it in `page.tsx` flags red under L5 (Source Purity). Put it in the edge (`source.ts`/`shell.tsx`).
-- **Effect switches are allowed ONLY in `runEffect.ts`.** Writing a handwritten switch on `effect.type` in `shell.tsx` flags red under L4 (Exhaustiveness).
+- **An Effect switch belongs in the feature's own `perform.ts`.** Writing a handwritten switch on `effect.type` in `shell.tsx` flags red under L4 (Exhaustiveness). Do not put one back in `shared/runEffect.ts` either: a shared switch makes one feature's vocabulary everybody's dependency, which is exactly what declaring `Effect` per feature removed.
+- **Never write your own effect loop.** `useSpacta` hands the queue to the engine in `shared/spacta`, which is the only caller of `perform` and turns *every* outcome into an Action — including the answer to an Effect that asked for nothing. A loop written twice is a loop that disagrees with itself.
+- **There is one channel for an answer, and the feature names its shape.** Declare `Answer` in your own `types.ts`, pass it as the fourth argument to `useSpacta`, and it arrives as `action.data` on `EFFECT_SUCCEEDED`. A server-assigned id and a page of rows travel the same way — do not add a second field for one of them.
 - **Cross-feature imports are restricted.** Importing the internals of an adjacent feature flags red under L1 (Isolation). Always go through `@/shared` or stay local to the feature.
 - **Raise common frames and vocabulary.** Extract common layouts and layout-agnostic presentation vocabulary. Feature-specific look-and-feel should be confined within `components/`.
 - **Avoid hardcoding layout or presentation values directly in shells or components.** First, use the `theme.extend` vocabulary in `tailwind.config.ts` (e.g., `bg-primary`).
@@ -44,7 +47,7 @@ cp -r Spacta/verify     myapp/verify
 cd myapp && npm install        # typescript, tailwindcss, and tailwind-variants are pre-configured.
 
 # 3) Run the verifier (runs with zero dependencies for Spacta laws)
-npm run verify                 # Runs L1–L8 checks, including the L6 self-test.
+npm run verify                 # Runs L1–L10 checks, including the L6 self-test.
 npm run verify:tsc             # Finally, verify TypeScript types via tsc --noEmit.
 ```
 
@@ -55,8 +58,13 @@ npm run verify:tsc             # Finally, verify TypeScript types via tsc --noEm
 
 1. Create `src/features/<new>/` and write `types.ts` / `core.ts` / `shell.tsx` imitating the `sample` feature.
    As display elements grow, create `components/` and move feature-specific UI there.
-2. When adding an Effect, add it to **both** the `Effect` type in `src/shared/types.ts` and the case inside `src/shared/runEffect.ts`
-   (forgetting to add it will fail `tsc` due to the `assertNever` check).
+   A feature with no IO needs no `perform.ts`; add one the first time Core declares an Effect.
+2. When adding an Effect, add it to **both** the `Effect` type in your own `src/features/<new>/types.ts`
+   and the case in your own `src/features/<new>/perform.ts` — the two live side by side, and neither edit
+   leaves your directory (forgetting the case will fail `tsc` via `assertNever`).
+   If another feature already declares the same Effect, **write it out again** rather than sharing the
+   declaration: what actually couples two screens is the endpoint they both POST to, and a shared
+   declaration never protected that (`SPACTA.md` §2 — duplication over coupling).
 3. If a common layout wrapper is needed, raise it to `app/layout.tsx` or `shared/ui`. If it starts knowing feature nouns, keep it inside features.
 4. Fix the code until `npm run verify` turns green. A red status is a bug to be fixed, not a warning (`SPACTA.md` §4).
 

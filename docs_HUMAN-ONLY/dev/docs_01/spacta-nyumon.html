@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spacta 入門 — 世界地図で理解する</title>
+<style>
+:root{
+  --bg:#fbfaf8; --surface:#ffffff; --line:#e3e0da; --line-soft:#efece7;
+  --ink:#22201d; --ink-2:#57534d; --ink-3:#8a857d;
+  --accent:#b4530a; --accent-soft:#fdf3e9;
+  --core:#2f6f4f; --core-soft:#eaf4ee;
+  --engine:#3d5a99; --engine-soft:#eaf0fb;
+  --io:#a03c56; --io-soft:#fbecef;
+  --react:#7a5a9e; --react-soft:#f4effa;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px -12px rgba(0,0,0,.10);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16151a; --surface:#1e1d23; --line:#34323b; --line-soft:#2a292f;
+    --ink:#eae7e2; --ink-2:#b3aea6; --ink-3:#8b847c;
+    --accent:#f0954a; --accent-soft:#2e2117;
+    --core:#6dc79a; --core-soft:#16291f;
+    --engine:#8fb0f0; --engine-soft:#171f2e;
+    --io:#eb8ba2; --io-soft:#2a171d;
+    --react:#c3a2ea; --react-soft:#211a2c;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+:root[data-theme="light"]{
+  --bg:#fbfaf8; --surface:#ffffff; --line:#e3e0da; --line-soft:#efece7;
+  --ink:#22201d; --ink-2:#57534d; --ink-3:#8a857d;
+  --accent:#b4530a; --accent-soft:#fdf3e9;
+  --core:#2f6f4f; --core-soft:#eaf4ee;
+  --engine:#3d5a99; --engine-soft:#eaf0fb;
+  --io:#a03c56; --io-soft:#fbecef;
+  --react:#7a5a9e; --react-soft:#f4effa;
+  --shadow:0 1px 2px rgba(0,0,0,.04), 0 8px 24px -12px rgba(0,0,0,.10);
+}
+:root[data-theme="dark"]{
+  --bg:#16151a; --surface:#1e1d23; --line:#34323b; --line-soft:#2a292f;
+  --ink:#eae7e2; --ink-2:#b3aea6; --ink-3:#8b847c;
+  --accent:#f0954a; --accent-soft:#2e2117;
+  --core:#6dc79a; --core-soft:#16291f;
+  --engine:#8fb0f0; --engine-soft:#171f2e;
+  --io:#eb8ba2; --io-soft:#2a171d;
+  --react:#c3a2ea; --react-soft:#211a2c;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic","Noto Sans JP","Segoe UI",Meiryo,sans-serif;
+  font-size:16px; line-height:1.85; letter-spacing:.01em; overflow-x:hidden;
+}
+.wrap{max-width:840px;margin:0 auto;padding:0 22px 120px}
+
+header{padding:76px 0 44px;border-bottom:1px solid var(--line)}
+.eyebrow{font-size:12px;letter-spacing:.2em;color:var(--accent);font-weight:700;margin-bottom:16px}
+h1{font-size:clamp(30px,6vw,46px);line-height:1.3;letter-spacing:-.02em;font-weight:800}
+.lede{margin-top:20px;font-size:17px;color:var(--ink-2);max-width:64ch}
+
+section{padding:58px 0 8px;border-bottom:1px solid var(--line-soft)}
+section:last-of-type{border-bottom:0}
+h2{font-size:clamp(21px,3.6vw,27px);line-height:1.45;letter-spacing:-.01em;font-weight:800;margin-bottom:8px}
+h2 .num{display:block;font-size:12px;letter-spacing:.18em;color:var(--accent);font-weight:700;margin-bottom:10px}
+h3{font-size:16.5px;font-weight:800;margin:36px 0 10px;color:var(--ink)}
+p{margin:14px 0;color:var(--ink-2)}
+p strong,li strong,td strong,dd strong{color:var(--ink);font-weight:700}
+ul,ol{margin:14px 0 14px 2px;padding-left:1.25em;color:var(--ink-2)}
+li{margin:7px 0}
+code{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:.85em; background:var(--line-soft); color:var(--ink);
+  padding:.14em .44em; border-radius:5px; white-space:nowrap;
+}
+
+.key{background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 25%,transparent);
+  border-radius:var(--radius);padding:20px 22px;margin:26px 0}
+.key .label{font-size:11px;letter-spacing:.16em;font-weight:800;color:var(--accent);margin-bottom:8px}
+.key p{margin:0;color:var(--ink);font-weight:600;font-size:17px;line-height:1.75}
+
+.note{border-left:3px solid var(--line);padding:4px 0 4px 18px;margin:24px 0;color:var(--ink-3);font-size:14.5px}
+
+.q{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--engine);
+  border-radius:10px;padding:16px 19px;margin:26px 0 20px;box-shadow:var(--shadow)}
+.q .qm{font-size:11px;letter-spacing:.14em;font-weight:800;color:var(--engine);margin-bottom:5px}
+.q p{margin:0;color:var(--ink);font-size:15.5px;font-weight:600;line-height:1.7}
+
+.fig{margin:34px 0}
+.fig-cap{font-size:13px;color:var(--ink-3);margin-top:12px;text-align:center;line-height:1.7}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:6px}
+.map{display:block;min-width:640px;width:100%;height:auto}
+
+.zone-fw{fill:var(--react-soft)}
+.zone-sp{fill:var(--surface)}
+.zone-net{fill:var(--io-soft)}
+.zone-frame{fill:none;stroke:var(--line);stroke-width:1}
+.border{stroke:var(--ink-3);stroke-width:1.5;stroke-dasharray:7 5;opacity:.55}
+.zlabel{font-size:11.5px;font-weight:800;letter-spacing:.1em;fill:var(--ink-3)}
+.blabel{font-size:11.5px;font-weight:800;fill:var(--ink-3)}
+.box{stroke-width:1.5;rx:10}
+.box-fw{fill:var(--surface);stroke:var(--react)}
+.box-eng{fill:var(--engine-soft);stroke:var(--engine)}
+.box-core{fill:var(--core-soft);stroke:var(--core)}
+.box-io{fill:var(--io-soft);stroke:var(--io)}
+.box-ext{fill:var(--surface);stroke:var(--ink-3);stroke-dasharray:5 4}
+.bt{font-size:14.5px;font-weight:800;fill:var(--ink);text-anchor:middle}
+.bs{font-size:11.5px;fill:var(--ink-3);text-anchor:middle}
+.bf{font-size:10.5px;font-family:ui-monospace,Menlo,Consolas,monospace;fill:var(--ink-3);text-anchor:middle}
+.road{stroke:var(--ink-3);stroke-width:2;fill:none;opacity:.6}
+.rlabel{font-size:11px;font-weight:700;fill:var(--ink-2)}
+.rlabel-m{font-size:11px;font-weight:700;font-family:ui-monospace,Menlo,Consolas,monospace;fill:var(--accent)}
+.nolink{stroke:var(--io);stroke-width:2;stroke-dasharray:5 5;opacity:.5;fill:none}
+.nolabel{font-size:11px;font-weight:700;fill:var(--io);text-anchor:middle}
+.go{stroke:var(--accent);stroke-width:3;fill:none}
+.back{stroke:var(--core);stroke-width:3;fill:none}
+.badge-go{fill:var(--accent)}
+.badge-back{fill:var(--core)}
+.badge-t{font-size:12.5px;font-weight:800;fill:#fff;text-anchor:middle}
+.legend-t{font-size:12px;font-weight:700;fill:var(--ink-2)}
+.hl{fill:var(--accent);opacity:.13}
+.hl-s{stroke:var(--accent);stroke-width:2.5;stroke-dasharray:6 4;fill:none}
+.ptitle{font-size:14px;font-weight:800;fill:var(--ink)}
+.psub{font-size:11.5px;fill:var(--ink-3)}
+
+.cards{display:grid;gap:14px;margin:26px 0}
+@media(min-width:660px){.cards.three{grid-template-columns:repeat(3,1fr)}
+  .cards.two{grid-template-columns:repeat(2,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px 18px;box-shadow:var(--shadow)}
+.card .ttl{font-size:15px;font-weight:800;margin-bottom:4px}
+.card .lib{font-size:12px;font-weight:800;margin-bottom:11px;display:inline-block;padding:2px 9px;border-radius:20px}
+.card .lib.ng{color:var(--io);background:var(--io-soft)}
+.card .lib.ok{color:var(--core);background:var(--core-soft)}
+.card .txt{font-size:13.5px;color:var(--ink-2);line-height:1.75}
+.card .ex{font-size:12px;color:var(--ink-3);margin-top:11px;padding-top:11px;border-top:1px dashed var(--line)}
+
+.ba{display:grid;gap:14px;margin:26px 0}
+@media(min-width:660px){.ba{grid-template-columns:1fr 1fr}}
+.ba-col{border-radius:var(--radius);padding:20px 18px;border:1px solid var(--line);background:var(--surface)}
+.ba-col.old{border-style:dashed}
+.ba-col .h{font-size:14px;font-weight:800;margin-bottom:10px}
+.ba-col.old .h{color:var(--ink-3)} .ba-col.new .h{color:var(--core)}
+.ba-col ul{margin:0;padding-left:1.15em;font-size:13.5px}
+.ba-col li{margin:6px 0}
+
+.tblwrap{overflow-x:auto;margin:24px 0}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px;min-width:480px}
+.tbl th,.tbl td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+.tbl th{font-size:11.5px;letter-spacing:.08em;color:var(--ink-3);font-weight:800;border-bottom:1px solid var(--line)}
+.tbl td{color:var(--ink-2)}
+.tbl td:first-child{color:var(--ink);font-weight:700;white-space:nowrap}
+
+.honest{list-style:none;padding:0;margin:22px 0}
+.honest li{background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:15px 17px;margin:10px 0;font-size:14px;color:var(--ink-2);line-height:1.7}
+.honest b{display:block;color:var(--ink);font-size:14.5px;margin-bottom:3px}
+
+.term{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px 20px;margin:24px 0;box-shadow:var(--shadow)}
+.term .th{font-size:11px;letter-spacing:.14em;font-weight:800;color:var(--accent);margin-bottom:10px}
+.term dl{display:grid;gap:12px}
+.term dt{font-size:14px;font-weight:800;color:var(--ink)}
+.term dd{font-size:13.5px;color:var(--ink-2);line-height:1.75;margin-top:2px}
+
+.meas{list-style:none;padding:0;margin:22px 0;display:grid;gap:12px}
+.meas li{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:start;
+  background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.meas .n{font-size:22px;font-weight:800;color:var(--accent);line-height:1.3;white-space:nowrap}
+.meas .d{font-size:13.5px;color:var(--ink-2);line-height:1.7}
+.meas .d b{display:block;color:var(--ink);font-size:14px;margin-bottom:2px}
+
+footer{padding:44px 0 0;border-top:1px solid var(--line);margin-top:56px;font-size:13px;color:var(--ink-3);line-height:1.8}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">SPACTA 入門</div>
+  <h1>AIと一緒に作るための、<br>アプリの世界地図</h1>
+  <p class="lede">
+    Spacta（スパクタ）は、Next.js アプリを「AI が安全に手を入れられる形」に整えるための
+    <strong>設計ルール＋小さなランタイム＋検査 CLI</strong> のセットです。
+    このページは React / Next.js を学習中の人向けに、その全体像を地図として説明します。
+  </p>
+</header>
+
+<section>
+  <h2><span class="num">01</span>解こうとしている問題</h2>
+
+  <p>Next.js で大きなアプリを作ろうとすると、2つの壁にぶつかります。</p>
+
+  <div class="cards two">
+    <div class="card">
+      <div class="ttl">壁① 密結合</div>
+      <div class="txt">
+        Next.js は UI と状態管理を密結合させるので、1つの機能変更が離れた場所に波及しかねません。
+        しかも<strong>「波及していないこと」を機械的に確かめる手段がありません</strong>。
+        頼れるのは部分的な型チェックだけです。
+      </div>
+    </div>
+    <div class="card">
+      <div class="ttl">壁② コンテキスト肥大</div>
+      <div class="txt">
+        密結合の構造上、小さなタスクでも大量の関連コンポーネントを読む必要が出ます。
+        <strong>コンテキストウィンドウが足りなくなる</strong>し、
+        小さな修正のために大規模なコードを読み解く非効率も生まれます。
+      </div>
+    </div>
+  </div>
+
+  <p>
+    ここで重要なのは、<strong>壁②はモデルが賢くなっても消えない</strong>ということです。
+    将来コードベース全体をコンテキストに収められるモデルが出ても、
+    「すべて読める」ことと「変更が状態管理をひそかに壊していないと保証できる」ことは別の問題だからです。
+  </p>
+
+  <div class="key">
+    <div class="label">SPACTA が賭けている一つの命題</div>
+    <p>機能を足しても、「1機能を触るために読む量」は増えないようにできる。</p>
+  </div>
+
+  <div class="term">
+    <div class="th">先に、この3語だけ具体的に決めておきます</div>
+    <dl>
+      <dt>エンジン（ランタイム）</dt>
+      <dd><code>src/shared/spacta/</code> にある約290行の TypeScript。
+        全機能が共通で使う「処理の順番待ち」と「サーバーとの往復」を担当します。</dd>
+      <dt>検査（verify）</dt>
+      <dd><code>npm run verify</code> で走らせる CLI。ESLint に近い立ち位置で、
+        リポジトリを AST として読んでルール違反を報告します。
+        違いは、末尾に<strong>「この緑が保証していないこと」まで印字する</strong>点。</dd>
+      <dt>型で守る</dt>
+      <dd>この文書で「構造で守る」と書いたら、多くの場合
+        <strong><code>tsc</code> がコンパイル時に落ちる</strong>という意味です。
+        実行するまで分からないバグを、書いた瞬間の型エラーに変換する、ということ。</dd>
+    </dl>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">02</span>なぜ今さらこんな分割をするのか</h2>
+
+  <div class="q">
+    <div class="qm">よくある疑問</div>
+    <p>今までも個人開発は十分できていた。なぜわざわざこんな制約を入れるの？</p>
+  </div>
+
+  <p>
+    まず、その感覚は正しいです。<strong>Spacta が使っているパターン自体は、何も新しくありません。</strong>
+    純粋な関数にロジックを閉じ込める設計も、Elm や Redux のループも、20年前からある考え方です。
+    そして<strong>主流にはなりませんでした</strong>。理由も単純で、
+    <strong>人間が書くには冗長すぎて割に合わなかった</strong>からです。
+  </p>
+
+  <p>
+    網羅的な <code>switch</code> 文。あらゆる分岐に対する明示的な型定義。
+    これらは「あとから検証しやすくする」ための投資ですが、
+    その対価として人間が払う筆記コストが高すぎました。
+    だから多くの人は、素直に <code>useState</code> と <code>fetch</code> をコンポーネントに書いてきたわけです。
+  </p>
+
+  <h3>生成AIが、この取引のレートを変えた</h3>
+
+  <p>
+    AI にとって、反復的で明示的な構造は<strong>書くコストがほぼゼロ</strong>です。
+    それどころか、これまで無数に見てきた密で機械的なパターンなので、
+    <strong>最も正確に再生産できる得意分野</strong>にあたります。
+  </p>
+
+  <div class="key">
+    <div class="label">Spacta を一文に畳むと</div>
+    <p>AI 時代に、「書くコスト」と引き換えに「検証可能性」を買う取引のレートが劇的に変わった。<br>
+    その新しいレートで、設計をやり直す。</p>
+  </div>
+
+  <p>
+    書き手のコストが消えた瞬間、検証可能性だけが残って純利益になります。
+    つまり「人間には割に合わなかったから流行らなかった設計」が、
+    <strong>書き手が AI に替わった今、初めて元が取れるようになった</strong>——これが最大の動機です。
+  </p>
+
+  <h3>もうひとつ、AI が持ち込んだ新しい問題</h3>
+
+  <p>
+    「このファイルに <code>fetch</code> を書かないで」とプロンプトで頼むのは、
+    Spacta の言葉では <strong>hope-prompt（祈るように頼むだけの指示）</strong>です。
+    守られる保証がありません。しかも悪いことに、
+    <strong>禁止事項を並べるほど LLM の注意機構は分散し、回答精度が落ちます</strong>。
+  </p>
+
+  <div class="key">
+    <div class="label">この設計思想の中心にある認識</div>
+    <p>Attention はリソースである。</p>
+  </div>
+
+  <p>
+    注意が薄く広がれば、その "祈り" 自体を取りこぼす確率が上がります。
+    Spacta はこれを <strong>rule-prompt</strong> に置き換えます——
+    AI はルールに沿って書き、<code>npm run verify</code> が緑になるまで自分で直すだけ。
+    境界が守られていることは、記憶や祈りではなく<strong>スクリプトが実際のコードを読んで保証</strong>します。
+    その結果、AI は注意を目の前のタスクだけに集中させられます。
+  </p>
+
+  <div class="note">
+    ここは Rust に例えると分かりやすいところです。AI に Rust を書かせると
+    「borrow checker が通るまで直す」というループが自然に発生します。
+    <strong>AI と Rust の相性が良いと言われる本当の理由はこれ</strong>で、
+    Spacta の「緑になるまで直す」は、それを Next.js の上に後付けで作ったものです。
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">03</span>中心にある分割 ——「決める」と「やる」を分ける</h2>
+
+  <p>
+    ふつうの React コンポーネントでは、ボタンのハンドラの中に
+    「バリデーション → <code>setState</code> → <code>fetch</code> → 返ってきたらまた <code>setState</code>」が
+    まとめて書かれます。Spacta はこれを役割ごとに3つに割ります。
+  </p>
+
+  <div class="cards three">
+    <div class="card" style="border-left:4px solid var(--core)">
+      <div class="ttl" style="color:var(--core)">コア — 決める人</div>
+      <div class="txt">
+        バリデーション、状態の更新、失敗時の巻き戻し。<strong>判断はすべてここ</strong>。
+        ただし <code>fetch</code> も <code>Date.now()</code> も呼びません。
+        引数だけを見て答えを返す純粋関数です。
+      </div>
+      <div class="ex">機能ごとに1つ。<code>features/○○/core.ts</code></div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--io)">
+      <div class="ttl" style="color:var(--io)">実行係 — やる人</div>
+      <div class="txt">
+        実際に <code>fetch</code> を投げる係。<strong>判断は一切しません</strong>。
+        渡されたものを送り、返ってきたものをそのまま返すだけ。
+      </div>
+      <div class="ex">アプリ全体で1ファイル。<code>shared/runEffect.ts</code></div>
+    </div>
+    <div class="card" style="border-left:4px solid var(--engine)">
+      <div class="ttl" style="color:var(--engine)">エンジン — つなぐ人</div>
+      <div class="txt">
+        コアが出した「やってほしいこと」を実行係に渡し、
+        結果を必ずコアに返す。<strong>この往復を絶対に落とさない</strong>のが仕事。
+      </div>
+      <div class="ex">全機能で共通。<code>shared/spacta/runtime.ts</code></div>
+    </div>
+  </div>
+
+  <p>
+    肝は、<strong>コアは命令を実行しない</strong>ことです。
+    「保存して」というオブジェクトを <code>return</code> するだけで、その場では何も起きません。
+    実行するのは実行係で、橋渡しをするのがエンジンです。
+  </p>
+
+  <div class="note">
+    なぜここまで分けるのか。コアが純粋関数になると、
+    <strong>そのファイルを読むだけで機能の全挙動が確定する</strong>からです。
+    「この関数、裏で API 叩いてるかも」という疑いが原理的に消えます。
+    AI が読む量を減らす効き目は、これが一番大きい。
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">04</span>国境を越えられる言葉は、4つだけ</h2>
+
+  <p>
+    コアと外の世界のあいだには<strong>膜</strong>があります。
+    ここを通れるのは4種類のデータだけ。これが Spacta で最も硬いルールです。
+  </p>
+
+  <div class="fig">
+    <div class="scroll">
+      <svg class="map" viewBox="0 0 660 250" role="img" aria-label="膜の図">
+        <rect x="0" y="30" width="230" height="200" rx="12" class="zone-fw"/>
+        <rect x="0" y="30" width="230" height="200" rx="12" class="zone-frame"/>
+        <rect x="430" y="30" width="230" height="200" rx="12" class="zone-sp"/>
+        <rect x="430" y="30" width="230" height="200" rx="12" class="zone-frame"/>
+        <rect x="245" y="30" width="170" height="200" rx="12" fill="var(--accent-soft)"
+              stroke="var(--accent)" stroke-opacity=".35"/>
+        <text x="115" y="16" class="zlabel" text-anchor="middle">外の世界</text>
+        <text x="330" y="16" class="zlabel" text-anchor="middle" fill="var(--accent)">膜</text>
+        <text x="545" y="16" class="zlabel" text-anchor="middle">コアの世界</text>
+        <text x="115" y="105" class="bt" fill="var(--react)">ブラウザ・React</text>
+        <text x="115" y="130" class="bs">通信・時計・DOM</text>
+        <text x="115" y="150" class="bs">いつ何が起きるか</text>
+        <text x="115" y="168" class="bs">分からない場所</text>
+        <text x="545" y="105" class="bt" fill="var(--core)">純粋関数</text>
+        <text x="545" y="130" class="bs">外を知らないので</text>
+        <text x="545" y="150" class="bs">同じ入力なら</text>
+        <text x="545" y="168" class="bs">必ず同じ答え</text>
+        <g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="12.5"
+           font-weight="700" fill="var(--accent)" text-anchor="middle">
+          <rect x="266" y="55" width="128" height="30" rx="7" fill="var(--surface)"
+                stroke="var(--accent)" stroke-opacity=".4"/>
+          <text x="330" y="75">InitData</text>
+          <rect x="266" y="96" width="128" height="30" rx="7" fill="var(--surface)"
+                stroke="var(--accent)" stroke-opacity=".4"/>
+          <text x="330" y="116">State</text>
+          <rect x="266" y="137" width="128" height="30" rx="7" fill="var(--surface)"
+                stroke="var(--accent)" stroke-opacity=".4"/>
+          <text x="330" y="157">Action</text>
+          <rect x="266" y="178" width="128" height="30" rx="7" fill="var(--surface)"
+                stroke="var(--accent)" stroke-opacity=".4"/>
+          <text x="330" y="198">Effect</text>
+        </g>
+      </svg>
+    </div>
+    <div class="fig-cap">図1 — 膜を通れる4つの型</div>
+  </div>
+
+  <div class="tblwrap">
+    <table class="tbl">
+      <tr><th>型</th><th>意味</th><th>React でいうと</th></tr>
+      <tr><td>InitData</td><td>最初に一度だけ渡す初期データ</td><td>サーバーから受け取る props</td></tr>
+      <tr><td>State</td><td>今どうなっているか</td><td><code>useState</code> の中身にあたるもの</td></tr>
+      <tr><td>Action</td><td>何かが起きた、という知らせ</td><td>reducer に <code>dispatch</code> するやつ</td></tr>
+      <tr><td>Effect</td><td>外にやってほしいことの<em>宣言</em></td><td>近いものがない。ここが Spacta 固有</td></tr>
+    </table>
+  </div>
+
+  <p>
+    <strong>4つとも「ただのデータ」</strong>で、関数やコールバックは膜を越えません。
+    だから「渡した先で勝手に何かが動く」ということが起こりえない。
+    これが後で出てくる「型で守る」の土台になります。
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">05</span>Spacta 世界地図</h2>
+
+  <p>
+    実際のアプリを領域として描くとこうなります。
+    <strong>横に引かれた点線が国境</strong>で、そこを越えると何が使えるかが変わります。
+  </p>
+
+  <div class="fig">
+    <div class="scroll">
+      <svg class="map" viewBox="0 0 700 620" role="img" aria-label="Spacta 世界地図">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-3)"/>
+          </marker>
+        </defs>
+        <rect x="0" y="0" width="700" height="228" class="zone-fw"/>
+        <rect x="0" y="228" width="700" height="272" class="zone-sp"/>
+        <rect x="0" y="500" width="700" height="120" class="zone-net"/>
+        <rect x="0" y="0" width="700" height="620" rx="14" class="zone-frame"/>
+        <line x1="0" y1="228" x2="700" y2="228" class="border"/>
+        <line x1="0" y1="500" x2="700" y2="500" class="border"/>
+        <text x="18" y="26" class="zlabel">フレームワークの領域</text>
+        <text x="18" y="45" class="bs" text-anchor="start">React / Next.js / DOM がある</text>
+        <text x="18" y="256" class="zlabel">SPACTA の領域</text>
+        <text x="18" y="275" class="bs" text-anchor="start">React も Next.js も 1 文字も入らない</text>
+        <text x="18" y="528" class="zlabel">ネットワークの向こう</text>
+        <rect x="196" y="216" width="308" height="24" rx="12" fill="var(--bg)"/>
+        <text x="350" y="233" class="blabel" text-anchor="middle">国境 ①　ここから下は React を知らない</text>
+        <rect x="240" y="488" width="220" height="24" rx="12" fill="var(--bg)"/>
+        <text x="350" y="505" class="blabel" text-anchor="middle">国境 ②　HTTP</text>
+
+        <rect x="36" y="66" width="196" height="62" class="box box-ext"/>
+        <text x="134" y="94" class="bt" fill="var(--ink-3)">Next.js のページ</text>
+        <text x="134" y="114" class="bf">app/○○/page.tsx</text>
+
+        <rect x="292" y="66" width="212" height="62" class="box box-fw"/>
+        <text x="398" y="94" class="bt">画面の配線</text>
+        <text x="398" y="114" class="bf">features/○○/shell.tsx</text>
+
+        <rect x="292" y="150" width="212" height="58" class="box box-fw"/>
+        <text x="398" y="176" class="bt">関所（アダプター）</text>
+        <text x="398" y="196" class="bf">shared/spacta/react.ts</text>
+
+        <text x="530" y="176" class="rlabel">React の作法は</text>
+        <text x="530" y="192" class="rlabel">全部ここで吸収</text>
+
+        <rect x="272" y="300" width="252" height="66" class="box box-eng"/>
+        <text x="398" y="328" class="bt" fill="var(--engine)">エンジン</text>
+        <text x="398" y="349" class="bf">shared/spacta/runtime.ts</text>
+
+        <rect x="36" y="410" width="220" height="66" class="box box-core"/>
+        <text x="146" y="438" class="bt" fill="var(--core)">コア（判断）</text>
+        <text x="146" y="459" class="bf">features/○○/core.ts</text>
+
+        <rect x="452" y="410" width="220" height="66" class="box box-io"/>
+        <text x="562" y="438" class="bt" fill="var(--io)">実行係（IO）</text>
+        <text x="562" y="459" class="bf">shared/runEffect.ts</text>
+
+        <rect x="452" y="540" width="220" height="56" class="box box-ext"/>
+        <text x="562" y="574" class="bt" fill="var(--ink-3)">サーバー / DB</text>
+
+        <line x1="232" y1="97" x2="286" y2="97" class="road" marker-end="url(#ar)"/>
+        <line x1="398" y1="128" x2="398" y2="146" class="road" marker-end="url(#ar)"/>
+        <line x1="398" y1="208" x2="398" y2="296" class="road" marker-end="url(#ar)"/>
+        <text x="412" y="248" class="rlabel-m">↓ Action</text>
+        <text x="412" y="278" class="rlabel-m">↑ State</text>
+        <line x1="300" y1="366" x2="200" y2="406" class="road" marker-end="url(#ar)"/>
+        <text x="126" y="378" class="rlabel-m">↓ Action</text>
+        <text x="100" y="396" class="rlabel-m">↑ State + Effect</text>
+        <line x1="496" y1="366" x2="596" y2="406" class="road" marker-end="url(#ar)"/>
+        <text x="524" y="378" class="rlabel-m">↓ Effect</text>
+        <text x="524" y="396" class="rlabel-m">↑ 結果</text>
+        <line x1="562" y1="476" x2="562" y2="536" class="road" marker-end="url(#ar)"/>
+        <text x="576" y="512" class="rlabel">fetch</text>
+
+        <line x1="256" y1="443" x2="452" y2="443" class="nolink"/>
+        <g stroke="var(--io)" stroke-width="2.5" opacity=".7">
+          <line x1="345" y1="434" x2="363" y2="452"/>
+          <line x1="363" y1="434" x2="345" y2="452"/>
+        </g>
+        <text x="354" y="418" class="nolabel">直通の道はない</text>
+      </svg>
+    </div>
+    <div class="fig-cap">
+      図2 — Spacta 世界地図。<code>features/○○/</code> は機能ごとに増える領土、
+      <code>shared/</code> は全機能で共有する領土
+    </div>
+  </div>
+
+  <h3>この地図から読み取ってほしい3つのこと</h3>
+
+  <p>
+    <strong>① 国境①より下には React が存在しない。</strong>
+    エンジン・コア・実行係には <code>import ... from "react"</code> が一行もありません。
+    偶然ではなく、コードに明記され、検査でも見張られています。
+    おかげで、React が新しい API を出しても<strong>直すのは関所ひとつだけ</strong>で済みます。
+  </p>
+
+  <p>
+    <strong>② コアと実行係のあいだに直通の道がない。</strong>
+    地図の中央の ✕ がそれです。コアは <code>fetch</code> を呼べません——
+    呼びたければ「Effect」というデータを返して、エンジンに頼むしかない。
+    この迂回が、コアを純粋関数のまま保っている仕掛けです。
+  </p>
+
+  <p>
+    <strong>③ エンジンだけが両側とつながっている。</strong>
+    だからエンジンは「往復が完了したか」を唯一知っている立場にあります。
+    ここが次のセクションの主役です。
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">06</span>クリックが一周する旅</h2>
+
+  <p>
+    「いいね」ボタンを押したとき、データが地図をどう移動するか。
+    <strong>同じ地図に、往路（オレンジ）と復路（緑）を描き込みます。</strong>
+  </p>
+
+  <div class="fig">
+    <div class="scroll">
+      <svg class="map" viewBox="0 0 700 620" role="img" aria-label="往復の経路図">
+        <defs>
+          <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+          <marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--core)"/>
+          </marker>
+        </defs>
+        <rect x="0" y="0" width="700" height="228" class="zone-fw"/>
+        <rect x="0" y="228" width="700" height="272" class="zone-sp"/>
+        <rect x="0" y="500" width="700" height="120" class="zone-net"/>
+        <rect x="0" y="0" width="700" height="620" rx="14" class="zone-frame"/>
+        <line x1="0" y1="228" x2="700" y2="228" class="border"/>
+        <line x1="0" y1="500" x2="700" y2="500" class="border"/>
+
+        <rect x="292" y="66" width="212" height="62" class="box box-fw"/>
+        <text x="398" y="94" class="bt">画面（シェル）</text>
+        <text x="398" y="114" class="bf">shell.tsx</text>
+        <rect x="292" y="150" width="212" height="58" class="box box-fw"/>
+        <text x="398" y="184" class="bt">関所</text>
+        <rect x="272" y="300" width="252" height="66" class="box box-eng"/>
+        <text x="398" y="340" class="bt" fill="var(--engine)">エンジン</text>
+        <rect x="36" y="410" width="220" height="66" class="box box-core"/>
+        <text x="146" y="450" class="bt" fill="var(--core)">コア</text>
+        <rect x="452" y="410" width="220" height="66" class="box box-io"/>
+        <text x="562" y="450" class="bt" fill="var(--io)">実行係</text>
+        <rect x="452" y="540" width="220" height="56" class="box box-ext"/>
+        <text x="562" y="574" class="bt" fill="var(--ink-3)">サーバー</text>
+
+        <path d="M388,128 L388,296" class="go" marker-end="url(#arg)"/>
+        <path d="M300,362 L206,406" class="go" marker-end="url(#arg)"/>
+        <path d="M232,406 L318,364" class="go" marker-end="url(#arg)"/>
+        <path d="M496,362 L590,406" class="go" marker-end="url(#arg)"/>
+        <path d="M556,476 L556,536" class="go" marker-end="url(#arg)"/>
+
+        <path d="M574,536 L574,480" class="back" marker-end="url(#arb)"/>
+        <path d="M596,410 L502,368" class="back" marker-end="url(#arb)"/>
+        <path d="M296,368 L200,410" class="back" marker-end="url(#arb)"/>
+        <path d="M408,296 L408,132" class="back" marker-end="url(#arb)"/>
+
+        <g>
+          <circle cx="292" cy="76" r="15" class="badge-go"/><text x="292" y="81" class="badge-t">1</text>
+          <circle cx="272" cy="310" r="15" class="badge-go"/><text x="272" y="315" class="badge-t">2</text>
+          <circle cx="46"  cy="420" r="15" class="badge-go"/><text x="46"  y="425" class="badge-t">3</text>
+          <circle cx="462" cy="420" r="15" class="badge-go"/><text x="462" y="425" class="badge-t">4</text>
+          <circle cx="524" cy="310" r="15" class="badge-back"/><text x="524" y="315" class="badge-t">5</text>
+          <circle cx="256" cy="466" r="15" class="badge-back"/><text x="256" y="471" class="badge-t">6</text>
+          <circle cx="504" cy="76" r="15" class="badge-back"/><text x="504" y="81" class="badge-t">7</text>
+        </g>
+
+        <g transform="translate(36,540)">
+          <line x1="0" y1="8" x2="34" y2="8" class="go"/>
+          <text x="42" y="12" class="legend-t">往路 ①〜④</text>
+          <line x1="0" y1="34" x2="34" y2="34" class="back"/>
+          <text x="42" y="38" class="legend-t">復路 ⑤〜⑦</text>
+        </g>
+        <text x="36" y="266" class="rlabel">①クリック → ②順番待ちに入る → ③どう変えるか決める</text>
+        <text x="36" y="286" class="rlabel">→ ④送信 → ⑤結果を持ち帰る → ⑥確定/巻き戻し → ⑦再描画</text>
+      </svg>
+    </div>
+    <div class="fig-cap">図3 — 書き込みは「行きっぱなし」ではなく、地図上をぐるりと一周する</div>
+  </div>
+
+  <div class="tblwrap">
+    <table class="tbl">
+      <tr><th>#</th><th>場所</th><th>起きること</th></tr>
+      <tr><td>1</td><td>画面</td><td>クリックが <code>{ type: "TOGGLE_VOTE" }</code> のような<strong>ただのデータ</strong>に変換される。ここから先、DOM イベントは流れない</td></tr>
+      <tr><td>2</td><td>エンジン</td><td>知らせを FIFO に積む。同時に来ても<strong>必ず一件ずつ</strong>処理する</td></tr>
+      <tr><td>3</td><td>コア</td><td>画面をどう変えるか決め、同時に「保存して」という Effect を返す。<strong>通信を待たず、画面はもう「いいね済み」になる</strong>（楽観的更新）。ただし「保存待ち」の控えを内部に残す</td></tr>
+      <tr><td>4</td><td>実行係</td><td>Effect を実際の <code>fetch</code> に変換して送信。<strong>アプリ全体でネットワークが動くのはこの1箇所だけ</strong></td></tr>
+      <tr><td>5</td><td>エンジン</td><td>成功でも失敗でも、結果を必ず Action に包んで持ち帰る。<strong>ここに分岐はなく、返事を捨てる道が存在しない</strong></td></tr>
+      <tr><td>6</td><td>コア</td><td>成功なら控えを消す。失敗ならいいねを取り消す。<strong>巻き戻しの判断もコアの仕事</strong>で、エンジンも実行係も何を戻すべきか知らない</td></tr>
+      <tr><td>7</td><td>画面</td><td>更新された State が反映される。ここで初めて React が再登場する</td></tr>
+    </table>
+  </div>
+
+  <div class="key">
+    <div class="label">この設計の合言葉</div>
+    <p>書き込みは出発ではなく、往復である。</p>
+  </div>
+
+  <p>
+    よくあるバグは <strong>④と⑤のあいだで返事を落とす</strong>ことです。
+    実際 livingdoc でも、以前はこの往復ループが<strong>機能ごとに3回も手書きされていて、
+    そのうち2つが返事を捨てていました</strong>。しかも誰も気づいていませんでした。
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">07</span>検査で守る → 型で守る</h2>
+
+  <p>その「返事を捨てていた」問題に、どう対処したか。ここが設計思想の核心です。</p>
+
+  <div class="ba">
+    <div class="ba-col old">
+      <div class="h">以前 — 検査で守る（verify に任せる）</div>
+      <ul>
+        <li>CLI がソースを AST として走査し、違反を探す</li>
+        <li>しかし <code>await runEffect(e);</code> と書いて<strong>戻り値を捨てるのは TypeScript として完全に合法</strong></li>
+        <li>AST から見ると「捨てた」と「そもそも受け取る必要がない（画面遷移など）」が<strong>同じ構文に見える</strong></li>
+        <li>結果、verify は緑を出し続けた</li>
+      </ul>
+    </div>
+    <div class="ba-col new">
+      <div class="h">現在 — 型で守る（tsc に任せる）</div>
+      <ul>
+        <li>エンジンが結果を返す処理に<strong>分岐が1つもない</strong>。捨てる経路がコード上に存在しない</li>
+        <li>結果を受け取る口を用意していない機能は、<strong>エンジンに渡す時点で型が合わず <code>tsc</code> が落ちる</strong></li>
+        <li>さらに <code>assertNever</code> で、case を書くこと自体をコンパイラが強制する</li>
+        <li>ループの実装が1つしかないので、それが正しければ全機能が正しい</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="key">
+    <div class="label">考え方の転換</div>
+    <p>「間違いを見つける検査」を強くするのではなく、<br>「その間違いを書けない型」に作り替える。</p>
+  </div>
+
+  <div class="note">
+    ただし全部が型で守れるわけではありません。「コアが純粋関数であること」は
+    <code>tsc</code> では検出できないので、<strong>今も verify という CLI に頼っています</strong>。
+    Spacta の改良とは、おおむね「検査に頼っていた部分を、型で守れる形に移していく」作業のことです。
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">08</span>「並列開発」と「直列化」は別のレイヤーの話</h2>
+
+  <div class="q">
+    <div class="qm">よくある疑問</div>
+    <p>「複数の AI で並列開発できる」と聞いた。でも「直列化」と書いてある。できないということ？</p>
+  </div>
+
+  <p>
+    どちらも正しく、<strong>矛盾していません。まったく別の時間軸の話</strong>だからです。
+  </p>
+
+  <div class="fig">
+    <div class="scroll">
+      <svg class="map" viewBox="0 0 700 400" role="img" aria-label="並列開発と直列化の対比">
+        <defs>
+          <marker id="ap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--engine)"/>
+          </marker>
+          <marker id="as" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+        </defs>
+
+        <!-- Panel A -->
+        <rect x="0" y="0" width="336" height="400" rx="12" class="zone-sp"/>
+        <rect x="0" y="0" width="336" height="400" rx="12" class="zone-frame"/>
+        <text x="20" y="30" class="ptitle" fill="var(--engine)">並列開発</text>
+        <text x="20" y="50" class="psub">＝ 開発しているとき（数日〜数週間）</text>
+
+        <rect x="78" y="72" width="180" height="42" rx="9"
+              fill="var(--engine-soft)" stroke="var(--engine)" stroke-width="1.5"/>
+        <text x="168" y="98" class="bt" fill="var(--engine)">契約を凍結する</text>
+        <text x="168" y="130" class="bs">types.ts を人間が先に確定</text>
+
+        <line x1="118" y1="142" x2="70"  y2="176" class="road" marker-end="url(#ap)" opacity=".8"/>
+        <line x1="168" y1="142" x2="168" y2="176" class="road" marker-end="url(#ap)" opacity=".8"/>
+        <line x1="218" y1="142" x2="266" y2="176" class="road" marker-end="url(#ap)" opacity=".8"/>
+
+        <g>
+          <rect x="22"  y="182" width="96" height="86" rx="9" fill="var(--surface)" stroke="var(--engine)" stroke-width="1.5"/>
+          <text x="70" y="208" class="bt" font-size="13">AI ①</text>
+          <text x="70" y="230" class="bs">catalog</text>
+          <text x="70" y="250" class="bs">を実装</text>
+
+          <rect x="120" y="182" width="96" height="86" rx="9" fill="var(--surface)" stroke="var(--engine)" stroke-width="1.5"/>
+          <text x="168" y="208" class="bt" font-size="13">AI ②</text>
+          <text x="168" y="230" class="bs">search</text>
+          <text x="168" y="250" class="bs">を実装</text>
+
+          <rect x="218" y="182" width="96" height="86" rx="9" fill="var(--surface)" stroke="var(--engine)" stroke-width="1.5"/>
+          <text x="266" y="208" class="bt" font-size="13">AI ③</text>
+          <text x="266" y="230" class="bs">profile</text>
+          <text x="266" y="250" class="bs">を実装</text>
+        </g>
+
+        <line x1="70"  y1="268" x2="140" y2="306" class="road" marker-end="url(#ap)" opacity=".8"/>
+        <line x1="168" y1="268" x2="168" y2="306" class="road" marker-end="url(#ap)" opacity=".8"/>
+        <line x1="266" y1="268" x2="196" y2="306" class="road" marker-end="url(#ap)" opacity=".8"/>
+
+        <rect x="78" y="312" width="180" height="44" rx="9"
+              fill="var(--core-soft)" stroke="var(--core)" stroke-width="1.5"/>
+        <text x="168" y="340" class="bt" fill="var(--core)">統合</text>
+        <text x="168" y="374" class="bs">初期評価では衝突ゼロ</text>
+
+        <!-- Panel B -->
+        <rect x="364" y="0" width="336" height="400" rx="12" class="zone-sp"/>
+        <rect x="364" y="0" width="336" height="400" rx="12" class="zone-frame"/>
+        <text x="384" y="30" class="ptitle" fill="var(--accent)">直列化</text>
+        <text x="384" y="50" class="psub">＝ ユーザーが使っているとき（ミリ秒）</text>
+
+        <text x="532" y="82" class="bs">1つの機能インスタンスの中で</text>
+
+        <rect x="404" y="98" width="256" height="230" rx="10"
+              fill="var(--accent-soft)" stroke="var(--accent)" stroke-opacity=".4" stroke-width="1.5"/>
+        <text x="532" y="122" class="bt" font-size="13" fill="var(--accent)">エンジンの順番待ち</text>
+
+        <rect x="428" y="140" width="208" height="40" rx="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="532" y="165" class="bt" font-size="12.5">① 投票を保存</text>
+        <line x1="532" y1="182" x2="532" y2="200" class="road" marker-end="url(#as)" stroke="var(--accent)" opacity=".8"/>
+
+        <rect x="428" y="204" width="208" height="40" rx="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="532" y="229" class="bt" font-size="12.5">② コメントを保存</text>
+        <line x1="532" y1="246" x2="532" y2="264" class="road" marker-end="url(#as)" stroke="var(--accent)" opacity=".8"/>
+
+        <rect x="428" y="268" width="208" height="40" rx="8" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="532" y="293" class="bt" font-size="12.5">③ ブックマーク</text>
+
+        <text x="532" y="352" class="bs">前の1件が終わるまで次は動かない</text>
+        <text x="532" y="374" class="bs">＝ 取りこぼしが原理的に起きない</text>
+      </svg>
+    </div>
+    <div class="fig-cap">図4 — 左は「誰がコードを書くか」、右は「実行中に処理がどう流れるか」。層も時間の単位も違う</div>
+  </div>
+
+  <div class="tblwrap">
+    <table class="tbl">
+      <tr><th></th><th>並列開発</th><th>直列化</th></tr>
+      <tr><td>いつの話</td><td>開発しているとき</td><td>アプリが動いているとき</td></tr>
+      <tr><td>時間の単位</td><td>数日〜数週間</td><td>ミリ秒</td></tr>
+      <tr><td>何が並ぶ/並ばないか</td><td><strong>機能</strong>（catalog / search / profile）</td><td><strong>1機能の中の書き込み</strong>（投票・コメント）</td></tr>
+      <tr><td>何のため</td><td>開発を速くする</td><td>データの取りこぼしを防ぐ</td></tr>
+    </table>
+  </div>
+
+  <h3>並列開発が成立する条件（ここは正確に）</h3>
+
+  <p>
+    「複数の AI で並列実装して衝突ゼロだった」は初期評価で実際に起きたことですが、
+    <strong>その成功の理由を取り違えないことが重要</strong>だと設計文書は念を押しています。
+  </p>
+
+  <div class="key">
+    <div class="label">衝突を防いだのは何だったか</div>
+    <p>衝突を防いだのは、機能同士を切り離すルールではない。<br>
+    <strong>契約（types.ts）を人間が事前に凍結したこと</strong>である。</p>
+  </div>
+
+  <p>
+    ルールが止めるのは機能↔機能の結合ですが、
+    <strong>並列で動く AI が実際にぶつかるのは共有部分</strong>（<code>shared/ui</code> のボタン部品や、
+    共通の型定義）です。ルールの役割は「合流点を、名前のついた少数の場所に限定すること」であって、
+    凍結そのものではありません。
+  </p>
+
+  <p>
+    したがって実務上の手順はこうなります——
+    <strong>①共有部分（型・UI部品）を先に実ファイルとして確定させる → ②機能ごとに AI を並列で走らせる → ③画面の統合を最後にまとめて行う。</strong>
+    この順番を守らずに並列化すると、共有部分の取り合いで普通に壊れます。
+  </p>
+
+  <h3>直列化のほうは、代償もある</h3>
+  <p>
+    エンジンは1つの機能インスタンスにつき、飛行中の書き込みを常に1件に制限します。
+    これが「投票の返事が着地したらコメントが消える」という種類のバグを構造的に消しました。
+    ただし<strong>互いに独立した書き込みまで待たされます</strong>。
+    正しさのために並行性を捨てた選択であり、採用する側が知っておくべき性質です。
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">09</span>AI は何を書き、何を書かないのか</h2>
+
+  <div class="q">
+    <div class="qm">よくある疑問</div>
+    <p>エンジンやアダプターがパッケージ化されるなら、AI に書かせる量は減るの？　結局、何を書かせていくの？</p>
+  </div>
+
+  <p>
+    まず前提として、Spacta の方針は<strong>「コードベースの全部を AI が書く」</strong>です。
+    <code>core.ts</code> のロジックも、<code>shell.tsx</code> の配線も、<code>components/</code> の見た目も、全部です。
+    人間の介入は<strong>任意</strong>——AI の生成物が問題なく動くならそのまま出荷して構いません。
+  </p>
+
+  <p>その上で、地図のどこを AI が書くのかを塗ってみます。</p>
+
+  <div class="fig">
+    <div class="scroll">
+      <svg class="map" viewBox="0 0 700 620" role="img" aria-label="AIが書く領域">
+        <rect x="0" y="0" width="700" height="228" class="zone-fw"/>
+        <rect x="0" y="228" width="700" height="272" class="zone-sp"/>
+        <rect x="0" y="500" width="700" height="120" class="zone-net"/>
+        <rect x="0" y="0" width="700" height="620" rx="14" class="zone-frame"/>
+        <line x1="0" y1="228" x2="700" y2="228" class="border"/>
+        <line x1="0" y1="500" x2="700" y2="500" class="border"/>
+
+        <!-- highlight: AI writes these -->
+        <rect x="280" y="54" width="236" height="86" rx="14" class="hl"/>
+        <rect x="280" y="54" width="236" height="86" rx="14" class="hl-s"/>
+        <rect x="24" y="398" width="244" height="90" rx="14" class="hl"/>
+        <rect x="24" y="398" width="244" height="90" rx="14" class="hl-s"/>
+
+        <rect x="292" y="66" width="212" height="62" class="box box-fw"/>
+        <text x="398" y="94" class="bt">画面の配線・部品</text>
+        <text x="398" y="114" class="bf">shell.tsx / components/</text>
+
+        <rect x="292" y="150" width="212" height="58" class="box box-fw"/>
+        <text x="398" y="176" class="bt" fill="var(--ink-3)">関所（アダプター）</text>
+        <text x="398" y="196" class="bf">パッケージ側</text>
+
+        <rect x="272" y="300" width="252" height="66" class="box box-eng"/>
+        <text x="398" y="328" class="bt" fill="var(--ink-3)">エンジン</text>
+        <text x="398" y="349" class="bf">パッケージ側・編集しない</text>
+
+        <rect x="36" y="410" width="220" height="66" class="box box-core"/>
+        <text x="146" y="438" class="bt" fill="var(--core)">コア（判断）</text>
+        <text x="146" y="459" class="bf">features/○○/core.ts</text>
+
+        <rect x="452" y="410" width="220" height="66" class="box box-io"/>
+        <text x="562" y="438" class="bt">実行係</text>
+        <text x="562" y="459" class="bf">case を1つ足すだけ</text>
+
+        <rect x="452" y="540" width="220" height="56" class="box box-ext"/>
+        <text x="562" y="574" class="bt" fill="var(--ink-3)">サーバー / DB</text>
+
+        <g transform="translate(30,540)">
+          <rect x="0" y="0" width="26" height="16" rx="4" class="hl"/>
+          <rect x="0" y="0" width="26" height="16" rx="4" class="hl-s"/>
+          <text x="36" y="13" class="legend-t">AI が毎回書く場所</text>
+          <text x="0" y="42" class="legend-t" fill="var(--ink-3)">灰色 ＝ 書かない（できあいのものを使う）</text>
+        </g>
+        <text x="20" y="266" class="rlabel">機能を1つ足すとき、増えるのはハイライトされた2箇所だけ</text>
+      </svg>
+    </div>
+    <div class="fig-cap">図5 — 機能追加のたびに AI が書くのは、コアと画面。エンジンと関所は触らない</div>
+  </div>
+
+  <div class="tblwrap">
+    <table class="tbl">
+      <tr><th>場所</th><th>誰が書くか</th><th>機能を1つ足すと</th></tr>
+      <tr><td>コア</td><td>AI（判断ロジック全部）</td><td>1ファイル増える</td></tr>
+      <tr><td>画面・部品</td><td>AI（人間が見た目を調整することも）</td><td>数ファイル増える</td></tr>
+      <tr><td>型の契約</td><td>人間が先に凍結し、AI が従う</td><td>1ファイル増える</td></tr>
+      <tr><td>実行係</td><td>AI（<code>case</code> を1つ足すだけ）</td><td>数行増える</td></tr>
+      <tr><td>エンジン</td><td><strong>誰も書かない</strong></td><td><strong>1行も増えない</strong></td></tr>
+      <tr><td>関所</td><td><strong>誰も書かない</strong></td><td><strong>1行も増えない</strong></td></tr>
+    </table>
+  </div>
+
+  <p>
+    実測では、エンジンは<strong>4つの機能を追加するあいだ 292 行から1行も動きませんでした</strong>。
+    パッケージ化の意味はここにあります——書く量が減るというより、
+    <strong>「毎回書き直していたせいで壊れていた部分」が、書く対象から消える</strong>ということです。
+  </p>
+
+  <div class="note">
+    実際、あの「往復ループが3回手書きされ、2つが返事を捨てていた」事故は、
+    <strong>共通化されていなかったから起きました</strong>。
+    同じものを3回書けば、3回とも正しく書ける保証はどこにもありません。
+    <br><br>
+    ちなみに現時点でエンジンはまだ npm パッケージになっておらず、3つのリポジトリに同じ内容がコピーされています。
+    苦しまぎれに「3つがバイト単位で一致しているか」を自動テストで確認している状態で、
+    <strong>止血であって解決ではない</strong>と設計文書に明記されています。
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">10</span>結局、どのくらい効くのか</h2>
+
+  <div class="q">
+    <div class="qm">よくある疑問</div>
+    <p>具体的にどのくらいエラーが減るの？　保守性はどのくらい上がるの？</p>
+  </div>
+
+  <p>
+    正直に答えると、<strong>「エラーが何％減る」という数字は測られていません。</strong>
+    そもそも Spacta が減らすのは、エラーの<em>数</em>ではないからです。
+  </p>
+
+  <div class="key">
+    <div class="label">verify が緑のとき、何が言えるのか</div>
+    <p>バグがない　　　　　　　　　　❌<br>
+    バグがあっても、それは局所的・明示的・決定的である　✅</p>
+  </div>
+
+  <p>
+    <code>count + 1</code> と書くところを <code>count + 2</code> と書き間違えたコードは、
+    <strong>緑のまま通ります</strong>。ロジックの間違いは検出されません。
+    減るのは<strong>「バグを探す範囲」</strong>のほうです。
+    密結合な Next.js では「これは正しいか？」がアプリ全体を見ないと答えられない問いになりますが、
+    Spacta ではそれが<strong>「1つの純粋関数を読めば答えられる問い」</strong>に縮みます。
+  </p>
+
+  <h3>実際に測られている3つのこと</h3>
+
+  <ul class="meas">
+    <li>
+      <span class="n">0件</span>
+      <span class="d">
+        <b>並列実装での衝突</b>
+        契約を凍結した上で、複数の独立した AI エージェントが別々の機能を同時に実装し、
+        衝突ゼロで統合できました（初期評価）。
+      </span>
+    </li>
+    <li>
+      <span class="n">12/12</span>
+      <span class="d">
+        <b>リプレイの一致</b>
+        「操作の記録だけから、画面の状態を完全に再現できる」かを12セッションで検証し、全一致。
+        <strong>同じ検証を改良前のコードで走らせると1個目・5個目の操作で食い違います</strong>——
+        つまり改良前には実在したバグが、実測で閉じたことが確認されています。
+      </span>
+    </li>
+    <li>
+      <span class="n">292行</span>
+      <span class="d">
+        <b>エンジンの不動</b>
+        機能を4つ追加するあいだ、共通エンジンは1行も変わりませんでした。
+        機能追加のコストが共通部分に波及していないことの実測値です。
+      </span>
+    </li>
+  </ul>
+
+  <h3>逆に、正直に増えるもの</h3>
+
+  <p>
+    設計文書自身が注記しているところですが、この設計には<strong>逆向きに働く2つの力</strong>があります。
+  </p>
+
+  <div class="ba">
+    <div class="ba-col new">
+      <div class="h">減るもの — AI が読む量</div>
+      <ul>
+        <li>1機能を触るのに読むのは、その機能のディレクトリだけ</li>
+        <li>「この関数、裏で API 叩いてるかも」という追跡が不要</li>
+        <li>状態がどこで書き換わるか探す作業が消える</li>
+      </ul>
+    </div>
+    <div class="ba-col old">
+      <div class="h">増えるもの — AI が書く量</div>
+      <ul>
+        <li>全分岐に明示的な型定義が要る</li>
+        <li>網羅的な <code>switch</code> を書く必要がある</li>
+        <li>1つの操作に <code>Action</code> と <code>Effect</code> の往復が要る</li>
+      </ul>
+    </div>
+  </div>
+
+  <p>
+    <strong>総体として安くつくのか高くつくのかは、まだ計測されていません。</strong>
+    設計文書はこれを「決着した主張」ではなく「未解決の問い」として書き留めています。
+    ただし、書き手が AI である以上、
+    <strong>「書く量が増える」側のコストは人間が払うものではない</strong>——
+    これが 02 で述べた取引レートの話につながります。
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">11</span>まだ解けていないこと</h2>
+
+  <p>
+    この設計のいちばん特徴的な性質は、
+    <strong>道具が「自分が保証していないこと」を毎回出力に含める</strong>ことです。
+    verify を走らせると、違反一覧のあとに <code>NOT guaranteed by this green:</code> という
+    見出しで9項目が印字されます。
+  </p>
+
+  <ul class="honest">
+    <li>
+      <b>データ経由の結合は消えていない</b>
+      機能同士が <code>import</code> し合うことは禁止できますが、
+      <strong>同じ DB テーブルを読んでいる</strong>ことによる結合は残ります。
+      実測では読み取りクエリのファイルが 508 行まで育ち、3機能が同じ定数を共有しています。
+      テーブルに列を1つ足す判断が3機能に同時に波及しますが、<strong>ルールはどれも反対しません</strong>。
+    </li>
+    <li>
+      <b>共有部分が線形に育っている</b>
+      冒頭の命題への、実測された反例。ルール同士の組み合わせの都合で、
+      書き込み機能を1つ足すと共有の型定義が1〜2行ずつ膨らみます。
+      <strong>計測ツール自身が閾値超過を検知し、警告を出し始めました。</strong>
+    </li>
+    <li>
+      <b>Next.js 自身の暗黙性は素通し</b>
+      キャッシュの意味論、再検証のタイミング、サーバー／クライアント境界のシリアライズ。
+      <strong>Next.js 最大の「追跡不能」はここにあり、Spacta のルールはほぼ手を出していません。</strong>
+    </li>
+  </ul>
+
+  <div class="key">
+    <div class="label">この設計が守っている一線</div>
+    <p>穴があること自体は許される。<br>穴を隠すことは許されない。</p>
+  </div>
+
+  <p>
+    verify が緑を出すとき、それが何を意味していて何を意味していないのか。
+    Spacta はそれを毎回明示します。
+    <strong>「緑だから安心」ではなく「緑はここまでを保証し、ここから先は保証しない」と言い切る</strong>——
+    これが、この設計で最も評価されている点です。
+  </p>
+</section>
+
+<section>
+  <h2><span class="num">12</span>まとめ</h2>
+  <ul>
+    <li><strong>動機</strong> — AI 時代に「書くコスト」と「検証可能性」の交換レートが変わった。昔は割に合わなかった設計が、今なら元が取れる</li>
+    <li><strong>地図</strong> — React を知る領域と知らない領域を国境で分け、コアと <code>fetch</code> のあいだに直通の道を作らない</li>
+    <li><strong>通行証</strong> — 国境を越えられるのは <code>InitData</code> / <code>State</code> / <code>Action</code> / <code>Effect</code> の4つのデータだけ</li>
+    <li><strong>往復</strong> — 書き込みは必ず一周して戻る。返事を落とす経路を構造から取り除いた</li>
+    <li><strong>並列と直列</strong> — 開発は並列にできる（契約を先に凍結すれば）。実行時の書き込みは直列（取りこぼしを防ぐため）</li>
+    <li><strong>効果</strong> — バグの数は減らない。減るのは<strong>バグを探す範囲</strong>。「アプリ全体を見る問い」が「1関数を読む問い」になる</li>
+    <li><strong>誠実さ</strong> — 解けていない部分を、道具自身に毎回言わせ続けている</li>
+  </ul>
+</section>
+
+<footer>
+  Spacta v0.10 時点の設計文書と実装をもとに、React / Next.js 学習者向けに要約したものです。<br>
+  ファイル名や行数は理解の足がかりとして載せています。実装の詳細は元の設計文書を参照してください。
+</footer>
+
+</div>
+</body>
+</html>
