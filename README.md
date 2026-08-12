@@ -37,15 +37,11 @@ If you're an AI agent, read only the rulebook below.
 
 ## FOR HUMAN DEVELOPERS
 
-Start here — what Spacta is for, what a green `verify` does and does not mean, and an explicit map of what it fails to solve:
-
-**[OVERVIEW.md](OVERVIEW.md)** (English)
-
-For the deeper philosophical background:
+philosophical background:
 
 **[docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md](docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md)** (Japanese)
 
-*That guide is the only current one. `docs_HUMAN-ONLY/HUMAN_GUIDE.md` (English) is an archived earlier draft pending replacement; it still contains claims this project has since retracted, so do not read it. `OVERVIEW.md` is an independent document rather than a translation of the Japanese guide, so the two are not kept in structural correspondence.*
+**[docs_HUMAN-ONLY/HUMAN_GUIDE.md](docs_HUMAN-ONLY/HUMAN_GUIDE.md)** (English)
 
 To bootstrap a new Spacta project from scratch:
 
