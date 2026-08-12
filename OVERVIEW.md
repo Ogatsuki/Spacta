@@ -234,7 +234,7 @@ walks zero files and exits `2`.
 ---
 
 Deeper philosophical background exists in Japanese, in
-[`docs_HUMAN-ONLY/ja/HUMAN_GUIDE_tactical_20260725-modify.md`](docs_HUMAN-ONLY/ja/HUMAN_GUIDE_tactical_20260725-modify.md).
+[`docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md`](docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md).
 
 This document is independent of that guide by design: it is not a translation and not a
 summary, and it carries no obligation to track the Japanese guide's structure as that guide
