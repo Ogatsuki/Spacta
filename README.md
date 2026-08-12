@@ -43,9 +43,9 @@ Start here — what Spacta is for, what a green `verify` does and does not mean,
 
 For the deeper philosophical background:
 
-**[docs_HUMAN-ONLY/ja/HUMAN_GUIDE_tactical_20260725-modify.md](docs_HUMAN-ONLY/ja/HUMAN_GUIDE_tactical_20260725-modify.md)** (Japanese)
+**[docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md](docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md)** (Japanese)
 
-*That guide is the only current one. The other `HUMAN_GUIDE*` files in `docs_HUMAN-ONLY/` are archived earlier drafts pending deletion; they still contain claims this project has since retracted, so do not read them. `OVERVIEW.md` is an independent document rather than a translation of it, so the two are not kept in structural correspondence.*
+*That guide is the only current one. `docs_HUMAN-ONLY/HUMAN_GUIDE.md` (English) is an archived earlier draft pending replacement; it still contains claims this project has since retracted, so do not read it. `OVERVIEW.md` is an independent document rather than a translation of the Japanese guide, so the two are not kept in structural correspondence.*
 
 To bootstrap a new Spacta project from scratch:
 

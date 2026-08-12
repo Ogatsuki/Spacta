@@ -1,76 +1,104 @@
+*This document is a translated version. The canonical (maintained) version is the Japanese original [`ja/spacta-alpha-evaluation.md`](ja/spacta-alpha-evaluation.md). If there is any discrepancy, the Japanese version takes precedence.*
+
 # Spacta Alpha Evaluation
 
-This document gathers the most prominent current hypotheses concerning Spacta, Next.js, and generative-AI-friendly development architectures. It does not record design decisions or work history for specific projects.
+**Currently under construction.** It's under construction, but for various reasons it's merged into main anyway.
 
-- This document does not have an index. We rewrite this file directly whenever our thoughts evolve. It is not a static document; it is updated continuously.
-- What is written here is not asserted facts, but the viewpoints that carry the most explanatory power at the present time.
-- Context, history, and insights that we decided not to put in `SPACTA.md` belong here (see "About the SPACTA.md File" for why).
-- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in `docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md`.
+This document gathers insights concerning Spacta, Next.js, and generative-AI-friendly development architectures. It does not record design decisions or work history for specific projects.
 
-Tags are attached to individual descriptions rather than headings.
+- This document gathers insights, observations, history, and context concerning generative AI.
+- It is not static; it is updated continuously as insights are found or discarded, and kept current at all times.
+- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in [docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md](docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md).
 
-- `[Core Hypothesis]` — The central working hypothesis of Spacta and generative-AI-friendly development.
-- `[Observation]` — Phenomena that have been repeatedly observed and support other hypotheses.
-- `[Implication]` — Design or operational consequences derived from core hypotheses or observations.
+Tags are attached to individual statements throughout this document. (Tagging is the author's own judgment call.)
+
+- `[Established]` — Something recognized as correct with fairly high confidence.
+- `[Recognized]` — Something judged correct with a moderate degree of confidence; what the author currently understands to be the case.
+- `[Observed]` — An observed fact.
+- `[Implication]` — Something that does not need its own validity assessment (it follows from something else already tagged).
+- `[Open Question]` — Not judged correct at this time; something that needs to be confirmed through verification.
 
 ---
 
-## About the SPACTA.md File
+## α1. About the [SPACTA.md](SPACTA.md) File
 
-- `SPACTA.md` is the file that every implementing AI must read for every task. In terms of reading frequency and scope, it is a central trunk of the project. The same logic applies here as with a bloated `types.ts` degrading the isolation of all features: if the file gets bloated, developer effectiveness degrades. `[Observation]`
-  - Therefore, we write only execution rules in `SPACTA.md` and its peripheral scripts (like verify), leaving context, history, and insights out of it. `[Implication]`
-    - This is simply applying the `SPACTA.md` principle—"keep types near the owner, raise only shared contracts to types.ts"—to the document itself.
-  - This observation provides the direct justification for pushing alpha evaluations out of `SPACTA.md` into this file.
+- [SPACTA.md](SPACTA.md) must stay lightweight. It's the file every AI responsible for implementation has to read on every task. Ten extra lines here means that much extra reading and compliance cost imposed on every single AI. In terms of how often and how broadly it's read, it's the project's central "trunk," and bloat here degrades the effectiveness of every developer (AI). Keeping this file lean should therefore be treated as high priority. `[Established]`
+  - For Opus/Sonnet, adding ~10 lines might not be a problem on its own, but `SPACTA.md` has higher information density than other documents and may be hit harder by the attention-dispersion effect discussed below. What matters isn't just line count, but how much attention gets dispersed, and how that trades off against recognition/compliance cost. `[Recognized]`
+- Therefore, we made a decision: `SPACTA.md` and its peripheral scripts (like verify) contain only execution rules — context, history, and insight get pushed out of it. It would have made sense, for the AI's context preservation, to include the alpha evaluation as well, but α0 pushes the alpha evaluation out into an external file instead. `[Implication]`
 
-## The Concept of Hope Prompts
+## α2. Hope Prompts
 
-- A prose instruction like "please do this" or "be careful about that," which is not enforced by tools, has no guarantee of being followed. We call these "hope prompts," representing the lowest tier (`hope`) in the Spacta reliability hierarchy (hope < detect < prevent-weak < prevent-strong). `[Core Hypothesis]`
-- Such instructions do not cause significant performance degradation when introduced individually. Modern models are robust against small amounts of prose instructions. `[Observation]`
-  - However, the true danger is not a single addition, but cumulative bloat. Repeatedly adding "harmless lines of prose" balloons the trunk that every AI must read every time.
-  - The historical bloat of the old `CLAUDE.md` (v3) was a prime example of this accumulation (see `docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md`).
-- The remedy is identical to "About the SPACTA.md File": impose a budget on prose instructions. `[Implication]`
-  - Instead of relying on moral discipline like "let's try not to write too much," we structurally prevent budget overruns by carving out the space for history and context into this external document.
-  - Core phrasing: What is dangerous is not a single line of hope prompt, but allowing it to settle and accumulate in a place where it doesn't belong.
+- A prose instruction like "please do this" or "watch out for that," unenforced by any tool, has no guarantee of being followed. We call this a "hope prompt" — a request that merely hopes to be obeyed — and place it at the bottom rung of Spacta's reliability hierarchy (hope < detect < prevent-weak < prevent-strong). `[Core Hypothesis]`
+- Introduced one at a time, such instructions don't cause major performance degradation. Modern models are robust to a small amount of prose instruction. `[Observation]`
+  - But the real danger isn't a single addition — it's cumulative bloat. Repeatedly adding "one more harmless-looking line" balloons the trunk that every AI has to read every single time.
+  - The historical bloat of the old `CLAUDE.md` (v3) was a textbook case of this accumulation (see `docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md`).
+- The remedy is the same as "About the SPACTA.md File": impose a budget on prose instructions. `[Implication]`
+  - Rather than relying on willpower ("let's be careful not to write too much"), we structurally prevent budget overruns by carving out this external document as the place where history and context live instead.
+  - Core phrasing: what's dangerous isn't a single line of hope prompt — it's letting it take root and accumulate somewhere it doesn't belong.
 
-## Asymmetry of Trunk and Leaf (Bloat cost is determined by the position in the dependency graph)
+## α3. The Asymmetry of Trunk and Leaf (Bloat cost is determined by position in the dependency graph)
 
-- Even for the same "1000-line file," the severity of damage is exponentially different depending on whether it is a trunk (imported by many) or a leaf (imported by none). `[Core Hypothesis]`
-  - `types.ts` is a trunk. Because every layer imports it, a single line of waste taxes N places. A hard budget (line count info check) is justified.
-  - `shell.tsx` is a leaf. Because it is only called by `app/page.tsx` and nothing imports its internals, its bloat does not degrade architectural isolation. **Bloating a trunk spreads harm; bloating a leaf creates local discomfort.**
-  - This is why the verifier places a line count info check only on `types.ts`, and does not impose line gates on shells. `[Implication]`
-- The line count info check is not scolding "having too many types." Rather, it uses line count as a proxy to detect architectural distortions, such as "types that do not cross the membrane being parked in the contract file." `[Observation]`
-  - Therefore, you must not mechanically split files just to hit numbers (which is like breaking the thermometer to lower the temperature). The correct cure is reducing the actual shared volume—co-locating single-owner types and deleting dead contracts. `[Implication]`
-  - `SPACTA.md` is also an extreme trunk read by all AIs on every task, and is subject to the same budget discipline (see "About the SPACTA.md File").
+- Even for the same "1000-line file," the severity of the damage differs exponentially depending on whether it's a trunk (imported from many places) or a leaf (imported from nowhere). `[Core Hypothesis]`
+  - `types.ts` is a trunk. Because every layer imports it, one wasted line taxes N places. That's exactly why a hard budget (a line-count info check) is justified.
+  - `shell.tsx` is a leaf. It's only called from `app/page.tsx`, and nothing imports its internals, so its bloat doesn't degrade architectural isolation. **Bloat in a trunk spreads harm widely; bloat in a leaf is a one-off annoyance.**
+  - This is why the verifier imposes a line-count info check only on `types.ts`, and sets no line-count gate on shells. `[Implication]`
+- The line-count info check isn't scolding you for "having too many types." Rather, it uses line count as a proxy signal for architectural distortion — like types that never cross the membrane being left stranded in the contract file. `[Observation]`
+  - So don't mechanically split files just to make the number look right (that's like breaking the thermometer to lower the temperature). The correct treatment is to reduce the amount actually being shared — co-locate single-owner types, and delete dead contracts. `[Implication]`
+  - `SPACTA.md` is also an extreme trunk read by every AI on every task, and is subject to the same budget discipline (see "About the SPACTA.md File").
 
-## The Harm of Reverse Dependency (shared ➔ features) and Delayed Manifestation
+## α4. Attention Dispersion, and Switching Cost
 
-- If a shared layer (`shared/runEffect` or `shared/ui`) imports types, Gateways, or hooks from a specific feature, the dependency arrow is reversed. The shared trunk balloons every time a feature is added. `[Observation]`
-  - This breach shows no harm when there is only one feature, manifesting only the moment a second feature is added. Therefore, "it works, so it's fine" cannot be trusted, requiring mechanical enforcement as L7. `[Implication]`
-  - To prevent regressions, we place reverse-dependency test fixtures in `verify/fixtures/` and monitor them continuously via L6 self-tests.
-- There are also semantic reverse dependencies that do not involve explicit imports: for example, when common component props or vocabulary learn feature-specific nouns (like `hintData`). This is difficult to catch via AST, and is covered by design reviews: "If `shared/ui` learns a feature noun, move it back into the feature." `[Implication]`
-- Raising a type to a central `types` file when it is needed by multiple features is a false remedy. It does not eliminate the dependency; it merely masks it, parking it in a shared garbage bin. The correct solution is: (a) use `contracts/*.ts` for thin bridges of persistence/API contracts, or (b) make the components talk in primitives for UI concerns. `[Implication]`
+- Giving the AI multiple tasks that should each be trivially small in context led to observed accuracy degradation and incomplete answers. `[Observed]`
+  - Concrete case: in a 200-question survey where each individual question was extremely simple, Sonnet's accuracy dropped sharply before reaching question 70 (e.g. every remaining answer converging to the same value, or going unanswered outright). A lower-performing model kept stable accuracy when made to answer in batches of 20 instead. `[Observed]`
+  - Takeaway: independent of a model's absolute capability ceiling, "attention switching cost" itself degrades accuracy. Put differently — even with a context window nowhere near full, accuracy can be degraded on purpose (or a task can be shaped so that it happens by accident). This has to be kept in mind whenever handing a task to an AI. `[Established]`
+- In my own informal observation, GPT-family models tolerated attention dispersion best, Gemini next, and Claude worst. That said, this is an old observation from around January 2026, measured only on cheap models, and hasn't had enough verification behind it to be trusted as a real finding. `[Open Question]`
+- As AI keeps advancing, tolerance for this switching cost is getting stronger, and I expect that tolerance to keep rising. `[Recognized]`
 
-## Unified Presentation Layer — Three Layers: Frame, Vocabulary, Components
+## α5. Attention Is a Resource
 
-- Even when structural verification (L1–L7) is green, user experience consistency is not guaranteed. In practice, `idea-vectorizer` (light UI) and `dashboard` (dark UI) were both green in verify, tsc, and build, yet looked like completely different applications. The root cause was the lack of shared design tokens. `[Observation]`
-  - Core phrasing: **Structure is green, experience is unachieved.**
-- Balancing UI uniformity and feature independence succeeds when responsibilities are split into three layers: `[Core Hypothesis]`
-  1. **Frame**: Headers and outer shells are pulled up to `app/layout.tsx` + `shared/ui` and shared across features. Shells specialize strictly in the main content area.
-  2. **Vocabulary**: Colors, margins, and border-radius are placed in tokens/theme. Just as data has `types.ts`, presentation has tokens. Both are thin trunks that hate bloat.
-  3. **Components**: Feature-specific UI components are closed within the feature's `components/`, permitting duplication. **What is shared is not the completed UI, but the vocabulary.** If duplicate components draw from the same tokens, look-and-feel does not drift. Duplication is cheaper than a bloated trunk.
-  - Postpone component extraction to `shared/ui` until the same shape has actually repeated in two or more features. Preemptive extraction breeds a heavy trunk in `shared/ui`. `[Implication]`
-- Detecting raw colors and arbitrary values (L8 Presentation Purity) is the presentation counterpart to L2 Core Purity, and a candidate for promotion from info to fail. However, because UI contains many exceptions, we introduce it as an info check for burn-in. L8 can only enforce vocabulary consistency; information design, density, and copy quality remain the domain of the `frontend-design` skill / human reviews (external brain). `[Implication]`
-- Physically splitting shells (container + components) is not a solution for UI uniformity, but a foothold to create reading/writing units for applying tokens/shared-ui. As a side effect of splitting, unstable React hook dependency arrays (like the `/api/hints` infinite loop incident) are not buried in JSX noise, minimizing the review surface area. `[Observation]`
-- The initial version of L8 (checking only `#hex` and arbitrary `bg-[...]`) had loopholes. In practice, even after completing "color alignment" and passing verify, `bg-fuchsia-400/10`, `border-fuchsia-300/20`, `bg-white/[0.06]`, `bg-gray-50`, and `bg-slate-950` remained, causing the look-and-feel to drift. **Even without raw hex in the source, "named palettes" or "color name + opacity" represent hardcoding specific colors, blocking automatic light/dark support.** `[Observation]`
-  - Core phrasing: **The greenness of presentation purity is only as honest as its detection vocabulary.** If detection is narrow, the green status is a lie. The same issue that made L2 (Core Purity) honest only after expanding from grep to AST happened on the presentation side.
-- L8's expansion is designed as a **three-way separation** rather than a "blanket ban on all palettes," which is the most practical compromise to avoid both false positives (developer annoyance) and leaks (drift). `[Implication]`
-  1. **Grayscale Palette** (`gray`/`slate`/`zinc`/`neutral`/`stone`/`white`/`black`) ➔ Info-flagged to push toward `background`/`foreground`/`card`/`border`. Drift here is the primary cause of "looking like a different app."
-  2. **Color + Opacity** (`fuchsia-400/10`, etc.) ➔ Info-flagged as hidden hardcoding to push toward semantic token + opacity (e.g., `bg-primary/10`). This assumes CSS variables are defined as HSL/RGB values (opacity modifiers do not work on hex variables, a technical lesson learned).
-  3. **Status Colors** (`red`/`green`/`amber`/`blue` series) ➔ **Allowed** as an escape hatch, as their meanings are fixed to the color and they appear frequently. Enforcing rules here yields too much noise.
-  - L8 only protects **vocabulary consistency**. Typography, spacing, margins, graphics, and the overall universe (tone & manner) lie outside color tokens, belonging to AI reviews using multimodal capabilities, `frontend-design` skills, or humans (the 4th axis of uniformity outside the 3 layers).
-- Clone detection (B3) compared JSX elements returned by `.map()` callbacks as "independent root elements" against the parent, incorrectly reporting parent `<ul>` and child `<li>` as duplicates with 0.9+ Jaccard similarity. Root JSX returned inside callbacks must be excluded from parent comparison as they are semantically descendants of the parent. **We fix verifier heuristic false positives in L6 self-tests via fixtures (`clone-map-callback`) to prevent regression.** `[Observation]`
+- When the things that need attention are spread widely across the context, it becomes hard for an LLM to hold onto all of them while reasoning. `[Established]`
+  - Something gets dropped during weight computation — this is the phenomenon commonly described as "the AI forgot." "The AI forgot the premise" likely covers not only necessary context being pushed out of a finite context window, but also this kind of drop during inference caused by attention dispersion. `[Established]`
 
-## Spacta and Parallel Implementation
+## α6. Monopoly of a Single Thinking State
+- LLMs operate through three thinking states — Read, Think, Write. It's ideal for a single state to dominate the load throughout a task (a concentrated ratio like 2:7:1, rather than a dispersed 4:4:1). `[Recognized]`
+
+## α7. AI Cognitive Load
+- I believe AI has a cognitive-load mechanism analogous to a human's. `[Recognized]`
+  - **Extraneous cognitive load**: reasoning cost spent on things outside the task itself. Reducible.
+    - Example: reading and understanding a codebase, mapping out Next.js's implicit, complex state management.
+    - In AI development, compute is finite. No amount of reading the codebase, or grasping complex state management, implements even a sliver of the task by itself. Spending finite compute on reducible cognitive load is inefficient. Ideally, all of a 100-unit budget of resource goes toward resolving intrinsic cognitive load. `[Established]`
+  - **Intrinsic cognitive load**: the reasoning cost of the task itself. Fundamentally irreducible.
+    - Example: implementing genuinely complex logic.
+    - Spacta's adoption of the state machine succeeds at lowering exactly this — the complexity of the task itself.
+  - **Germane cognitive load**: the load of a task that has to be learned and internalized before it can be done.
+    - Example: "have the AI use a syntax it's never once encountered in training."
+
+## α8. The Orchestrating AI's Cognitive Load Explosion
+- An "orchestrating AI" that has to hold an entire application's context in mind sees its cognitive load explode as the application grows. `[Established]`
+- As implementation proceeds, cross-checking the implementation against the spec piles on top of that load, and single-state dominance breaks down easily. `[Observation]`
+  - Example: Opus — read the spec (Read) → think through the implementation (Think) → implement (Write) → check it against the spec (Read).
+  - The fix: delegate decision-making authority down to lower layers (feature/Core/Shell), structurally relieving the top layer's load. This lines up exactly with the role Spacta's "feature isolation / horizontal isolation" already plays. `[Implication]`
+
+---
+
+*What follows, α9–α14, was appended separately from the original α1–α8 above, in a section left to Claude's technical judgment. It deliberately strips out project-specific implementation detail (which check looks at what, the blow-by-blow of specific incidents) as much as possible, keeping only claims general enough to hold up for other AI-First development efforts too.*
+
+## α9. The Harm of Reverse Dependency, and Its Delayed Manifestation
+
+- If a layer meant to stay generic and shared imports something specific to one particular consumer, the dependency arrow effectively reverses: the "shared" layer now silently grows every time a new consumer is added. `[Observation]`
+  - The breach is invisible while there is only one consumer, and only manifests the moment a second consumer arrives. **"It works, so it must be fine" cannot be trusted as a signal here** — the direction of the arrow has to be checked structurally, not inferred from the app currently running. `[Core Hypothesis]`
+  - Because the harm is latent, regression only shows up at the worst possible time — when a second, unrelated team or agent starts depending on the same shared layer. Mechanical enforcement of directionality (not code review, not "we'll remember") is what catches this before it compounds. `[Implication]`
+- There is also a semantic version of this that involves no explicit import at all: a piece of shared vocabulary or a shared component's props quietly absorb a noun that belongs to one specific consumer (e.g. a generic prop taking on a domain-specific field name). This is hard to catch mechanically via AST and needs a standing design-review heuristic instead: **if a shared layer has learned a consumer-specific noun, move it back into that consumer.** `[Implication]`
+- Promoting a type into a central shared file the moment two consumers need it is a false remedy. It doesn't remove the dependency between those two consumers — it relocates it into a shared bin, where it now merely *looks* legitimate. The fix is either (a) a thin, explicitly-named bridge for persistence/API-level contracts, or (b) having the consumers communicate through primitive values instead of a shared named type. `[Implication]`
+
+## α10. UI Consistency Needs Its Own Vocabulary Layer
+
+- Structural verification being green (boundaries respected, no cross-imports) does not guarantee the UI reads as one coherent product. Two features can each pass every mechanical check and still look like two different apps, because "no shared design tokens" is not something a boundary checker is positioned to catch. `[Core Hypothesis]`
+  - Core phrasing: **structure can be green while the experience is unachieved.**
+- The general shape of the fix: split UI responsibility into what's structural (a shared frame/shell), what's a shared vocabulary (design tokens — color, spacing, radius), and what's allowed to be duplicated (feature-local components). Sharing the vocabulary, not the finished component, is what keeps look-and-feel from drifting without also rebuilding the coupling that isolation was meant to remove. `[Implication]`
+  - How this is actually enforced in Spacta today — the three-way split of what a presentation-purity check flags versus allows, and the concrete incidents that led there — is project-specific implementation detail, not a general hypothesis. It's recorded in `spacta-decisions.md` (D-008) rather than here.
+
+## α11. Spacta and Parallel Implementation
 
 - Spacta is not "conventions to remind you of good design," but a "terrain to keep parallel implementers from colliding." `[Core Hypothesis]`
   - In adding the `dashboard` feature, we froze `types.ts` first, then distributed core/source/shell to multiple agents in parallel. This clearly demonstrated the value of Spacta.
@@ -81,46 +109,31 @@ Tags are attached to individual descriptions rather than headings.
   - If parallelized while contract remains ambiguous, agents will expand contracts independently, turning `types.ts` back into a garbage bin.
   - `types.ts` must be treated as a small design deliverable frozen *prior* to parallelization, not a byproduct of implementation.
 - Feature connections function as part of this terrain. `[Implication]`
-  - Connections between features pass through external boundaries (API / DB / URL / shared) rather than direct imports. `features/<name>/types.ts` is not a central bridge connecting features, but a membrane contract connecting Core/Source/Shell/Page within a feature.
+  - Connections between features pass through external boundaries (API / DB / URL / shared) rather than direct imports. A feature's own type contract is not a central bridge connecting features to each other, but a membrane contract connecting that one feature's Core/Source/Shell/Page.
 
-## Why L6 (Verifier Self-Verification) is the Backbone
+## α12. Why Self-Verification of the Verifier Is the Backbone
 
-- Simply saying "enforce with tools" does not guarantee that the enforcement is effective. Real-world example (the L4 comment incident): The verification regex was fooled by a comment string, allowing a code block lacking exhaustiveness termination to pass undetected. `[Observation]`
-- Therefore, L6 is the backbone of this framework. We prove the verifier is functioning every time by testing it against intentionally broken fixtures. Even if the Form is flexible, this proof remains fixed. Without L6, L1–L5/L7 revert to hope at the meta-level. `[Core Hypothesis]`
+- Simply saying "enforce with tools" does not guarantee that the enforcement is effective. Real-world example: a verification regex was fooled by a comment string, allowing a code block that lacked proper exhaustiveness termination to pass undetected. `[Observation]`
+- Therefore, the verifier checking itself is the backbone of this whole approach. We prove the verifier is functioning every time by testing it against intentionally broken fixtures. Even if the surrounding conventions stay flexible, this proof remains fixed. Without it, every other rule reverts to hope at the meta-level — you're trusting that the tool that's supposed to remove trust is itself trustworthy, with nothing checking that assumption. `[Core Hypothesis]`
 
-## types.ts Sharing Budget and Limits of Verify
+## α13. Sharing Budget for `types.ts`, and the Limits of `verify`
 
-- A green `npm run verify` is highly effective, but not the sole metric of success. `[Observation]`
-- Evaluating Spacta outcomes requires at least four layers: `[Core Hypothesis]`
-  1. **Structural Measurement**: Are L1–L6 green? Is Core free of IO? Is feature isolation maintained?
-  2. **Type/Contract Measurement**: Is there any dead-export? Does any single-owner-export remain in `types.ts`? Are DB/API contracts clearly sourced?
-  3. **Experience Measurement**: Does it look like the same app? Are color, density, copy, and navigation aligned?
-  4. **Operational Measurement**: Was it easy to implement in parallel? Was the cause of errors localized? Did the number of files touched for a typical edit decrease?
-  - Verify directly inspects 1, and can be expanded to check parts of 2 and the vocabulary aspect of 3. Synthesizing quality in 3 and developer experience in 4 requires human or advanced model evaluation.
-  - Core phrasing: **Verify is a passing condition, not a success condition.**
-- This understanding does not weaken Spacta, but strengthens it. By clarifying what verify checks, we can integrate the remaining judgments into our process. `[Implication]`
-- Dead-export and single-owner-export catch misplaced contracts mechanically. However, the decision of whether to move local-use types to their owner files is not automated. `[Implication]`
-  - Single-owner-export can include false positives or design-stage sharing candidates, and thus remains permanently as info, not failing. "Just one place today" is left to human/AI judgment.
-- Even structural measurement (Layer 1) is incomplete with `verify` (without `--tsc`) alone. In practice, after moving types out of `types.ts` to their owners, **verify remained green while old unused import statements remained**, and only `tsc --noEmit` flagged red. Verify inspects laws (structural boundaries), not type resolution. `[Observation]`
-  - Core phrasing: **Green verify ≠ Green types.** The two are separate axes. Confusing green verify with type safety can lead to letting broken references pass during refactoring. We run `--tsc` / `tsc --noEmit` alongside verify, and state this in `SPACTA.md` §3 and `verify/README` (fixing it as a procedure rather than telling developers to "be careful"). `[Implication]`
+- A green mechanical check is highly effective, but not the sole metric of success. `[Observation]`
+- Evaluating outcomes for this kind of architecture requires at least four layers: `[Core Hypothesis]`
+  1. **Structural measurement**: Are the boundary checks green? Is pure logic free of IO? Is isolation maintained?
+  2. **Type/contract measurement**: Is there any dead export? Does a type used by only one owner still sit in the shared contract file? Are external contracts (DB/API) clearly sourced?
+  3. **Experience measurement**: Does it look like the same app? Are color, density, copy, and navigation aligned?
+  4. **Operational measurement**: Was it easy to implement in parallel? Was the cause of errors localized? Did the number of files touched for a typical edit decrease?
+  - A structural verifier directly inspects layer 1, and can be extended to check parts of layer 2 and the vocabulary aspect of layer 3. Synthesizing quality in layer 3 and developer experience in layer 4 requires human or advanced-model evaluation — there's no way around that.
+  - Core phrasing: **a green check is a passing condition, not a success condition.**
+- This understanding doesn't weaken the approach — it strengthens it. By being explicit about what the mechanical check does and doesn't cover, the remaining judgment calls can be folded into the process deliberately, instead of being silently assumed away. `[Implication]`
+- Detecting a dead or single-owner export catches misplaced contracts mechanically. But deciding whether to actually move a locally-used type back to its owner file is not something that can be automated — it stays a human/AI judgment call, left as an info-level signal rather than a failure, precisely because it can have false positives or legitimate design-stage sharing candidates. `[Implication]`
+- Even structural measurement (layer 1) is incomplete from boundary-checking alone, without also running the type checker. In practice, after moving types out of a shared contract file back to their owners, the boundary check stayed green while stale, now-unused import statements remained — only the type checker flagged it red. A boundary checker inspects structural laws, not type resolution. `[Observation]`
+  - Core phrasing: **a green boundary check ≠ green types.** The two are separate axes. Confusing one for the other can let broken references slip through during a refactor. Run both together, and say so explicitly in the project's own rules, rather than telling developers to "just be careful." `[Implication]`
 
-## Loopholes in Law Scope — Declared in Prose, Ignored by Tools
+## α14. Loopholes in Law Scope — Declared in Prose, Ignored by Tools
 
-- "Hope prompts" do not just happen in "prose outside of §1". They also manifest when the **actual scope of a Law under §1 is narrower than its declaration**. Real-world measurement: The migration task instruction stated, "Check API routes for non-deterministic values and aggregation leaks as well." However, the L5 (source-purity) check at the time only scanned `app/**/page.tsx`, ignoring `route.ts`. The developer AI had to "be careful and inspect manually," meaning a Law claiming to be "prevent-strong" had degenerated back to "hope" for routes. `[Observation]`
-  - Core phrasing: **No matter how broad a Law's name is, if the scanned target is narrow, the gap is still "hope".** L5 boasted "purity at server boundaries," but the implementation only looked at pages. This gap between declaration and scan target is the exact same loophole as the L4 comment incident and the L2 grep missing `new Date()`.
-- The fix is identical to L2/L4: **Make the scan target catch up with the declaration, and lock it down with fixtures.** Extend L5 to cover both `page.tsx` and `route.ts`. Treat non-deterministic generation (`new Date`/`Date.now`/`Math.random`/`crypto.randomUUID`) as `err`, treat direct aggregation as `warn`, and add `bad-route` and `good-route` to the L6 self-test. `[Implication]`
-  - Because routes are edges that legitimately perform IO (`await` fetch/DB), the IO itself is not target of L5. Only "non-deterministic generation" and "direct business aggregation" are banned—applying the same standard and the same AST inspection to routes as to pages. There is no reason to vary the purity standard based on whether the boundary is a page or a route. `[Implication]`
-  - Generalization: Whenever you add a new law or widen the wording of an existing law, **you must widen the scan glob and test fixtures at the same time**. Widening only the wording immediately degrades the difference to "hope". Explicitly listing "which file set this law actually inspects" in the README check table serves as the permanent prevention mechanism for this loophole. `[Implication]`
-
-## AI Cognitive Characteristics (Attention Context-Switching Costs, etc.)
-
-- When given multiple unrelated tasks, the AI has to switch its attention repeatedly, causing a severe drop in accuracy. `[Observation]`
-  - Real-world example: In a 200-question survey where individual questions were extremely simple, even high-performing models suffered a sharp drop in accuracy before reaching 70 questions. Conversely, a lower-performing model maintained stable accuracy when forced to answer in batches of 20.
-  - The takeaway: Unrelated to the model's absolute capability limits, the "attention context-switching cost" itself degrades accuracy. Tasks should be structured to avoid this.
-- LLMs operate in three thinking states: "Read", "Think", and "Write". It is ideal when a single state dominates the load throughout the task (a concentrated 2:7:1 ratio rather than a dispersed 4:4:1). `[Observation]`
-  - The orchestrating AI at the top layer experiences an explosion in cognitive load when attempting to grasp the context of the entire application. As implementation progresses, matching implementation with specifications adds to this load, easily breaking the single-state dominance. `[Observation]`
-  - The solution: Delegate decision-making authority to lower layers (feature/Core/Shell) to structurally relieve the top layer's load. This aligns perfectly with the role already played by Spacta's "feature isolation / horizontal isolation." `[Implication]`
-- This phenomenon is not unique to Spacta, but is background knowledge underpinning all AI-collaborative development. `[Implication]`
-  - Third parties adopting Spacta do not necessarily need to know this background. It serves as the origin context preserved as a common language between humans and AI.
-  - Note: The specific conclusion derived from this in old v3 ("prefer one giant file over multiple short files, eliminate imports") has been retracted (see `docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md` "Expiry of the Dependency Graph Tracking Cost Assumption"). What we preserve here is not that conclusion, but the existence of the attention context-switching cost phenomenon itself.
-
+- Hope-prompt-shaped danger doesn't only occur in ordinary prose. It also shows up when **the actual scanned scope of a mechanically-enforced rule is narrower than what the rule's name promises**. Real-world example: a migration task's instructions said "check API routes for non-deterministic values and aggregation leaks too." But the purity check in force at the time only scanned page files, silently skipping route handlers. The developer AI had to "be careful and inspect manually" for routes — meaning a rule that claimed to be mechanically enforced had quietly degraded back into a hope-prompt for that one surface. `[Observation]`
+  - Core phrasing: **no matter how broad a rule's name is, if the scanned target is narrow, the gap that's left over is still hope.** This is the exact same shape of loophole as a regex missing a construct it was supposed to catch — a gap between what a rule declares and what it actually scans.
+- The fix is always the same shape: **make the scanned target catch up with the declared scope, and lock the fix down with a fixture so it can't silently regress.** Treat the missed surface with the same standard as the one that was already covered — there's rarely a real reason for the purity bar to vary based on which kind of boundary file you're looking at. `[Implication]`
+  - Generalization: whenever you add a new rule, or widen the wording of an existing one, **you must widen the scan target and the test fixtures at the same time.** Widening only the wording immediately degrades the difference into hope. Explicitly listing, in one place, "which files this rule actually inspects" is the standing prevention mechanism for this loophole. `[Implication]`

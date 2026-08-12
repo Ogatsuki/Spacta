@@ -1,407 +1,740 @@
-# Spacta — AI-First Vibe Coding ガイド & アーキテクチャ v0.11
+# Spacta — AIにNext.jsを書かせるための、機械検証つきアーキテクチャ
 
-工事中
+AIコーディングの難しさは「AIが書けないこと」ではなく、**書けたと報告されたコードが他を壊していないかを確かめる手段がないこと**にあります。
 
-Spactaへようこそ。
-ここはSpactaの人間用ガイドです。
-実際にAIに渡されるルールは[SPACTA.md](SPACTA.md)を参照してください。
-このファイルで使用している概念の詳細は、[docs_HUMAN-ONLY/ja/spacta-alpha-evaluation.md][docs_HUMAN-ONLY/ja/spacta-alpha-evaluation.md]を参照してください。
+Spactaは、Next.jsアプリの各機能を独立したディレクトリに文字通り隔離し、**その境界が破られていないことをスクリプトが検証する**仕組みです。境界を守らせることで、LLMとしての回答精度向上と、保守性を高めています。
 
----
+Spactaは機能ごとに、**計算だけをする層（Core）と、外界に触る層**を物理的に分けます。その境目を**膜**と呼びます。
 
-## 0. Spactaとは
-
-Spactaとは、「アプリの各機能をそれぞれ独立した境界（bounded context）の中に閉じ込め、その境界が保たれていることを機械的に証明する」仕組みです。
-これは、Next.jsでは暗黙的で複雑、追跡困難だった状態管理などを、スクリプトで間違っていないと証明できる仕組みです。
-
-現在Next.jsにて使用できます。
-
-*現在β版であり、改善が不可欠です。フィードバックを歓迎します。*
-
-UI・状態管理・API呼び出しを1つのファイルに詰め込む密結合なNext.jsは、構造的に検証が困難です。逆に、それらを型契約で疎結合につなげば、スクリプトによる検証の余地が生まれます。Spactaはこの特性を用いて、Next.jsアプリ全体に機械的な検証可能性を持ち込みます。土台にあるのは FCIS（Functional Core, Imperative Shell）の考え方で、これはVibe Codingと非常に相性の良いアプローチです。
-
+> **膜を越えるのはデータだけ。IOは入らず、計算は出ない。**
 
 ---
 
-Spactaは1つのツールの名称ではなく、複数の考え方の上に成り立つ設計思想と、スクリプト群の総称です。
+## この文書の読み方
 
-### ベースとする思想
+必要な章だけ読んでください。
 
-1. **コンテキスト隔離（Context Isolation）**
+| 章 | 内容 | 誰向け |
+|---|---|---|
+| **1. 何を解決するのか** | 症状と原因、Spactaの答え | 全員 |
+| **2. どう動くのか** | ディレクトリ・ループ・実コード | 使う人（Next.jsの知識が要る） |
+| **3. verifyが保証すること／しないこと** | 緑の意味 | 使う人 |
+| **4. 実際の作業ループ** | 人間とAIの分担、1機能の作り方 | 使う人 |
+| **5. Gardener** | UIの片付け | 使う人 |
+| **6. よくある質問** | 既存アプリ、1画面2機能、テストなど | 使う人 |
+| **7. Spactaが解決していないこと** | 構造的な限界 | 評価する人 |
+| **8. 検査自身を検証する仕組み** | 定理の検算、変異テスト | 評価する人 |
+| **9. 現時点の未成熟さ** | 版ごとに変わる話 | 評価する人 |
+| **10〜11. 設計の背景と展望** | 思想、他分野への応用 | 興味があれば |
 
-AIの回答品質は、コンテキストの質によって
+**前提：** Next.js **App Router**（Pages Routerは対象外）／ React 18以降 ／ TypeScript **`strict: true`**（網羅性チェックが最後の砦になるため実質必須）。データベースは不問です — 取得と永続化はSpactaの管轄外です（§7-1）。
 
+**コマンドの表記：** 以下 `npm run verify` と書くのは `starter/package.json` に定義された `node verify/verify.mjs .` のショートカットです。npmパッケージは未配布なので、starter以外では末尾（「次のステップ」）のコマンドを直接実行してください。
 
-   大規模なアプリをNext.jsで作ろうとすると、2つの現象を目にします。
+その他：
 
-   - **問題1 - 暗黙的な状態管理**: Next.jsはUIと状態管理を密結合させるため、1つの機能変更が離れた場所の広範なロジックへ波及しかねません。しかも、その波及が起きていないことを機械的に確かめる手段が存在せず、部分的にTypeScriptの静的型チェックに頼るしかありません。これが、暗黙のエラーとスパゲッティコードの温床になります。スパゲッティコードは文法的にNext.jsに許容され、この暗黙の整合性維持が、私たちがOpus級の高性能モデルを使う理由の1つになっています。
-   - **問題2 - コンテキスト肥大**: Next.jsの密結合は、構造的にタスク解決に多くの関連コンポーネントのロードを要求します。小さな機能の追加でも、大きな範囲のコンテキストを読み込み、暗黙的な繋がりを推論する非効率や、単純にコンテキストウィンドウが足りなくなる可能性があります。これらはAPIコストの上昇や、AIの処理能力の低下に繋がります。
-
-   **Spactaは物理的な隔離を行いました。** すべての機能は専用ディレクトリ（`core.ts` / `shell.tsx` / エッジファイル群）に閉じ込められ、他の機能の内部を import できません。あなた（あるいはAI）が1つの機能に触れるとき、必要なのはその機能自身のファイルだけであり、`app/` ツリー全体でも、その裏に隠れた複雑な因果関係でもありません。後述する**型契約**に従えば、アプリ全体の仕様を知らなくても、独立して境界を破らない実装ができます。初期評価では、複数の独立したAIエージェントが凍結された契約に対して別々の機能を並行実装し、衝突ゼロで統合できました。これはSpactaがタスクを「AIが確実に扱える大きさ」に切り詰める2つの手段のうちの1つで、もう1つが次の項目です。
-
-*（この成功の帰属は正確に述べます。**衝突を防いだのはLawではありません。** Lawが止めるのは横方向（機能↔機能）と逆方向（shared→features）の結合で、並列エージェントが実際にぶつかるのは**共有上流**（`shared/ui` や `shared/types.ts`）です。衝突しなかったのは、**契約を人間が事前に凍結したから**です。Lawの役割は「合流点を少数の名前のついた場所に限定すること」であり、凍結そのものではありません。手順は `SPACTA.md` §4-6 を参照してください。）*
-
-2. **明示的構造による複雑性の低減**
-
-   人間が手で書けば疲弊してしまうような冗長さ — 網羅的なswitch文、あらゆる分岐に対する明示的な `Action` / `Effect` 型 — は、AIの出力精度を損なわないだけでなく、タスクそのものの複雑性を下げるAIフレンドリーな設計の一つです。網羅的で明示的なステートマシンは、「隠れた相互作用をたどって何が起こるべきかを推論する」作業を、「欠けている1つのケースを埋める」という機械的でパターンマッチ可能な作業へ変えます。これは判断を要する仕事ではありません。警戒すべき失敗モードは、圧縮された暗黙のロジックであって、冗長で明示的なロジックではないのです。
-
-   *（これは前項〈コンテキスト隔離〉のコスト削減とは逆方向に働く点に注意してください。隔離はAIが読むべき入力コンテキストを縮めますが、明示的な状態機械の構造はAIが書くべき出力を増やします。総体として安くつくのか高くつくのかは、まだ計測されていません — ここでは決着した主張としてではなく、未解決の問いとして書き留めておきます。）*
-
-3. **契約駆動開発（Contract-driven development）**
-
-   各機能は、凍結された `types.ts`（その `State` / `Action` / `Effect` の形状）を公開します。契約が事前に固定されているため、各機能は、あなた・AI・あるいは別々の機能を担当する複数のAIエージェントによって、互いに内部を調整することなく独立して実装できます。
-
-4. **機械的検証（hope-promptの排除）**
-
-   「このファイルに fetch を書かないで」とプロンプトでAIに伝えるのは、*hope-prompt*（祈るように頼むだけの指示）です — AIが履行してくれることを願うもので、守られる保証がありません。守ったかどうか2つ目のAIを走らせるのが現状です。むしろこうした禁止事項の列挙は、LLMの注意機構を分散させ、AIの回答精度を低下させることに繋がります。注意が薄く広がれば、重みの計算の際に "hope" を取りこぼしてしまう可能性が高まります — **Attention はリソースです**。Spactaは、これを全て *rule-prompt* に置き換えます。AIはルールに沿って書き、`npm run verify` がグリーンになるまで自分で直すだけです。境界が守られていることは、記憶や祈りではなくスクリプトが実際のコードを読んで保証します。だからAIは、自身のAttentionリソースを目の前のタスクだけに集中させることができます。
-
-   ただし、verifyが保証するのは**境界のルールが遵守されている**ことであって、**バグがないこと**ではありません。`count + 1` と書くところを `count + 2` と書き間違えたコードはグリーンのまま通ります。
-
-   verifyがグリーンのとき言えるのは「バグがない」ではなく、**「バグがあっても、それは1つの機能のcoreの中に閉じ、`(state, action)` だけから再現でき、隠れた入力も他機能への波及もない」**ということです。Spactaは暗黙の接続を*証明する*のではなく、要らない接続を消し、残った接続を全部*明示のドア（型契約）*に通します。だから正しさは、アプリ全体を見渡す問いではなく、1つの純粋関数を読めば答えられる**ローカルな問い**になります。
-
-   **v0.10 追記 — この断言は3つの主張の束なので、成否を分けて書きます。** 前提として、v0.9時点ではこの一文は**そのままでは偽**でした: 書き経路の戻り（サーバ採番ID・失敗）がActionを経由せずstateに入りうる限り、それは `update` の隠れた入力です。
-
-   - **「隠れた入力を持たない」は真になりました。** 根拠は検査ではなく構造です——`shared/spacta` のエンジンが唯一の実行経路であり、結果は必ずActionとして戻ります（戻りを捨てる経路が存在せず、`update` が受け取るのは `Action | EffectOutcome` なので、処理し忘れは網羅性チェックによって tsc が落とします）。加えて §6.4 のリプレイ照合で、実走行と `(initData, actions[])` からの再導出が中間状態まで一致することを確かめてあります。
-   - **「`(state, action)` だけから再現できる」も真になりました。** ただし先行条件がもう1つあり、それは**状態遷移の直列化**です。v0.10以前は非直列な `drain` のせいでこれは偽で、リプレイ照合をv0.10以前のループで走らせると実際に発散します。
-   - **「他機能への波及もない」は、いまも文字どおりには偽です。** 消えているのは**コードを経由する結合**だけで、同じテーブル・同じAPIを読むことによるデータ層の結合は残っています（§6.2）。しかもこの結合は**プロセス内のActionログには現れない**ので、リプレイ照合でも検出できません。照合の出力はこの1点を未検証として毎回印字します。
-
-   この一文を引用するときは、「隠れた入力がなく、Actionログから決定的に再現でき、**コードレベルでは**他機能に波及しない」と読み替えてください。
-
-   「Next.jsで検証できない暗黙の接続」は、実は「なくす」か「明示に強制する」かのどちらかで処理されています。
-
-   - **機能→機能の隠れた接続を"廃止"する（L1/L7）**: featureは他featureの内部を触れません。だから「チェックアウトをいじったら在庫が壊れた」という遠隔作用が、**コードレベルでは**起こり得ません。これは接続を"検証可能にした"のではなく、接続そのものを構造的に不可能にしたのです。検証すべき暗黙の接続が消えます。（機能同士がやり取りする必要があるときは、`types.ts` の凍結契約という明示のドアだけを通ります。裏口がありません。なお、コードを経由しない結合 — 同じDBテーブルや同じAPIをデータ層で共有することによる結合 — はこのルールの射程外です。§6で正直に扱います。）
-   - **ロジック→外界の隠れた接続を"廃止"する（L2/L3）**: coreは純粋関数なので、出力は `(state, action)` だけで決まります。時刻・乱数・ネットワークといった隠れた入力が存在しません。つまり外界との暗黙の接続が消え、すべての入力が引数として明示されます。
-   - **"書き忘れ"という暗黙の穴を"禁止"する（L4）**: effectの分岐は網羅的でなければ通りません。「1ケース書き忘れた」という典型的な暗黙のギャップが、verifyのエラーになります。（ただし書いたケースが正しいかは別問題です。）
-
-   つまりverifyが緑のとき保証されるのは:
-
-   - バグがない ❌
-   - バグがあっても、それは"局所的・明示的・決定的"である ✅
-
-   **なぜこれがそんなに効くのか。** 密結合なNext.jsでは「これは正しいか？」がアプリ全体を見ないと答えられない問いになります。状態がどこで書き換わるか、effectがどこで発火するか、追跡不能だからです。Spactaはこれを**「1つの純粋関数を読めば答えられる問い」**に縮めます。正しさを保証するのではなく、正しさを人間やAIやテストが*実際に確かめられる形*に落とす。ここがAIと相性がいい本当の理由です — 推論の対象が1ファイルに畳まれます。
-
-5. **The Gardener（庭師）**
-
-   速く進めるほど、UIコードには場当たり的なTailwindの値や重複したマークアップが溜まっていきます。`npm run garden` を実行すると、AIがコードベースを一巡し、この乱れを共有のセマンティックなUIプリミティブへ集約します。今日のスピードが、後々の散らかりに変わらないようにするためです。
-
-*ここまで読んで「Redux / Elm のパターンと同じでは？」と思ったなら、その直感は正しいです。目新しいのはパターン自体ではなく、この境界が単なる規約ではなく物理的に強制され、機械的に検証される点です（前述の機械的検証）。パターンの系譜と、その中でSpactaがどこに立つのかは §6 で詳述します。*
-
-*なお、UIの見た目の統一だけは、1つの機能に閉じては保ちきれません。ページ間でデザインを揃えたいときは、複数機能のUIを横断して見ながら整えることを推奨します（他機能を import するわけではないので、隔離のルールには触れません）。共有トークンと `shared/ui` は部品単位の一貫性は保証しますが、ページ全体の調和までは自動化しきれないためです。*
-
-*これは**調整フェーズの推奨**であって、実装の作業分割の規約ではありません。実装フェーズで並列委譲するときの順序は `SPACTA.md` §4-6 に置いてあります（実装AIが読むのは `SPACTA.md` であり、この人間向けガイドではないため、**手順は向こうに書く**必要があります）。実務上は、shell と `app/` を最後に1体がまとめて書く形にすると、この「横断して見ながら整える」が手順として自然に発生します。*
+- AIに渡す実行ルールは [`SPACTA.md`](../../SPACTA.md)（79行）です。この文書はAIには読ませません。
+- 設計判断の背景メモは [α評価](spacta-alpha-evaluation.md) にあります。
+- セットアップは [setup.md](../setup.md)。
+- ベータ版です。未検証の主張が残っています。§7〜§9に記載しました。フィードバックを歓迎します。
+- 土台に FCIS（Functional Core, Imperative Shell）を採用しています。
 
 ---
 
-## 1. SpactaとNext.jsの橋渡し
+## 1. 何を解決するのか
 
-Next.jsアプリを作った経験があれば、Spactaは「AIが機能同士を絡み合わせないよう、コードの構成を組み替える仕組み」だと捉えると分かりやすいはずです。実際のディレクトリ構成は次のようになります:
+### 1-1. 症状
+
+Next.jsアプリをAIに書かせると、次のことが起きます。
+
+- **小さな変更でもAIが大量のファイルを読む。** UIとロジックと状態管理が結合しているため、1箇所を直すのに周辺の理解が要る。トークンを消費し、精度が落ちる。
+- **`dashboard` を直したら `home` が壊れる。** しかもビルドは通る。
+- **AIは「できました」と報告する。** 境界を守ったかどうかを確かめる手段がない。
+
+3つ目が最も重い問題です。**Next.jsは絡み合ったコードを文法的に許すので、不健全な状態管理はビルドを素通りします。**
+
+### 1-2. 答え：物理的な隔離と、機械的な検証
+
+**隔離。** `dashboard` と `home` はそれぞれ専用ディレクトリに閉じます。片方が他方の内部をimportすると、`verify` が構文木（AST）を読んで赤にします。
+
+**契約。** 各機能は `types.ts` に入出力の型（`State` / `Action` / `Effect` / `InitData`）を公開します。この4つが膜を越える語彙です。型を満たすように実装すれば、**他の機能を1行も読まずに実装が完結します**（`shared/ui` の部品は読みます。読まなくてよいのは他の機能です）。
+
+AIに渡すのは「アプリ全体の仕様」ではなく「1つの型契約」で済みます。
+
+初期評価では、**人間が契約を先に凍結したうえで**、複数のAIエージェントが別々の機能を並行実装し、衝突ゼロで統合できました。
+
+### 1-3. hope-prompt を使わない
+
+「このファイルに `fetch` を書かないでください」とプロンプトで指示するのは、ツールによって強制されない散文の依頼です。これを **hope-prompt** と呼んでいます。守られる保証がありません。
+
+加えて、禁止事項を並べるほどAIの注意が分散します。注意すべき事項が広範囲に散らばると、推論時に取りこぼす確率が上がります（[α評価 α5](spacta-alpha-evaluation.md)）。
+
+Spactaは禁止事項をプロンプトから検証器へ移します。
+
+- 書く rule：「IOが必要ならCoreからEffectを*宣言*する」
+- 書かない hope：「Coreに `fetch` を書くな」
+
+AIは「プロンプトを遵守しているか自己確認する」作業から解放されます。違反があれば `verify` が赤を返すので、緑になるまで直せば済みます。
+
+### 1-4. ステートマシンという冗長さ
+
+Spactaは網羅的なswitch文と、全分岐への明示的な型付けを要求します。人間が手で書くには冗長ですが、**AIにとっては生成コストがほぼゼロで、かつ正確に再生産できる形式です。**
+
+効果は、「隠れた相互作用をたどって何が起こるべきか推論する」作業が、**「欠けている1つのケースを埋める」というパターンマッチ可能な作業に変わる**ことです。判断が要らなくなり、tscが最後の検査になります。
+
+*（コスト面：冗長な記述はoutputトークンを増やします。inputトークンと推論コストは隔離によって減ります。総体で安いか高いかは計測していません。）*
+
+### 1-5. 緑は「バグがない」ではない
+
+`count + 1` と書くべきところを `count + 2` と書いたコードは緑のまま通ります。
+
+緑が意味するのは次の3点だけです。
+
+- バグがあっても、それは1つの機能のcoreの中に閉じている
+- `(initData, actions[])` だけから再現できる（隠れた入力がない）
+- 他機能への波及がコードレベルでは起きない（データ層経由の結合は残る → §7-1）
+
+Spactaは暗黙の接続を証明するのではなく、**不要な接続を削除し、残った接続を型契約に通します。** その結果、「これは正しいか」がアプリ全体を見渡す問いではなく、**1つの純粋関数を読めば答えられる問い**になります。推論の対象が1ファイルに収まる、というのがAIとの相性の実体です。
+
+### 1-6. 道具なしで持ち帰れる部分
+
+Spactaを導入しなくても、以下の5点は任意のNext.jsコードベースで適用できます。
+
+1. **ロジックは純粋関数に置く。** `fetch`・`new Date()`・`Math.random()` をそこに書かない
+2. **非決定性は引数として注入する。** 時刻もIDも外で採取して値として渡す。**サーバが採番したIDも同じ扱い**
+3. **副作用は実行せず、宣言して返す。** 何をするかを値で返し、実行は外側の1箇所に集める
+4. **その実行ループはプロジェクトに1つだけ。** 2つ書くと互いに食い違います（実例は §8-2）
+5. **初期データは一度だけ渡す。** 途中で外から状態に触らない
+
+`verify` は、この5点を忘れられないようにする装置です。装置がなくても5点は有効です。
+
+---
+
+## 2. どう動くのか
+
+参照実装として `starter/` があります。緑になる最小のNext.jsプロジェクトで、同時に検証器自身のテスト対象でもあります。以下のコードは `starter/src/features/sample/` の実物からの抜粋です。
+
+### 2-1. ディレクトリ
 
 ```txt
 src/
   features/
-    counter/
-      core.ts       # 純粋ロジック（State/Action/Effectの計算のみ）
-      shell.tsx     # UIの配線（状態とレイアウトを結びつける）
-      types.ts      # State / Action / Effect の契約
+    sample/
+      types.ts      # 契約。State / Action / Effect / InitData / Answer
+      core.ts       # 純粋ロジック。(state, action) => [nextState, effect[]]
+      perform.ts    # この機能のEffectを実行する（IO）
+      shell.tsx     # JSXの配線のみ。状態は持たない
+      components/   # propsの純粋関数。useStateもfetchも禁止
   shared/
-    source.ts       # 非決定的な値を読み取るエッジ（時刻・UUID・fetch）
-    runEffect.ts    # 副作用を実行する唯一のディスパッチ地点
     spacta/
-      runtime.ts    # エンジン。Effectキューを直列に回し、結果を必ずActionに変換して戻す（フレームワーク非依存）
-      react.ts      # 束縛アダプター。React での状態保持と、非決定性（時刻・ID）の採取
+      runtime.ts    # エンジン。Effectキューを直列に回し、結果を必ずActionに変換して戻す
+      react.ts      # 束縛アダプター。Reactでの状態保持と、時刻・IDの採取
+    runEffect.ts    # 輸送のみ（POSTしてJSONを返す）。何を送るかは知らない
+    source.ts       # 非決定性の入口。時刻・UUID・DB/APIフェッチ（サーバ側）
+    ui/             # 機能に依存しない表示部品（Button, Card…）
 ```
 
-Spactaの境界の概念が、標準的なNext.jsの構成要素にどう対応するかを示します:
+| 部品 | 役割 | 場所 |
+|---|---|---|
+| **Core** | 純粋ロジック。`init` / `update`。async・fetch・`new Date()` を含まない。どこで実行しても安全 | `features/*/core.ts` |
+| **Perform** | その機能のEffectを実行する。Effect語彙の宣言（`types.ts`）の隣に置く | `features/*/perform.ts` |
+| **Shell** | JSXの配線のみ。状態をpropsへ、操作を `Action` へ。状態は自分で持たない | `features/*/shell.tsx` |
+| **Engine** | Effectキューを直列に回し、`perform` を呼ぶ唯一の場所。結果を必ず `Action` に変換してCoreへ戻す。ドメインの分岐を持たず、ReactもNext.jsも参照しない。**編集する場所ではありません** | `shared/spacta/runtime.ts` |
+| **束縛アダプター** | 状態を保持して再描画を起こし、時刻とIDを採取する。React / Next.js の変化が着地する唯一の場所 | `shared/spacta/react.ts` |
+| **Source** | 非決定性の入口。時刻・UUID・DB/APIフェッチ（サーバ側） | `shared/source.ts` |
+| **輸送** | POSTしてJSONを返すだけ。語彙を名指ししない | `shared/runEffect.ts` |
 
-| Spactaのコンポーネント | Next.jsでの対応・役割 | ディレクトリ |
-| :--- | :--- | :--- |
-| **Core** | **純粋ロジック層**。reducerのような関数（`init`, `update`）。非同期処理、fetch、日時の動的生成は一切含まない。どこで実行しても安全。 | `features/*/core.ts` |
-| **Shell** | **JSXの配線だけ**。状態をpropsへ、ユーザー操作を `Action` へ。状態は自分では持ちません（v0.10以降）。 | `features/*/shell.tsx` |
-| **Engine**（エンジン） | **機構**。Effectキューを直列に回し、`runEffect` を呼ぶ唯一の場所で、結果を必ず `Action` に変換してCoreへ戻す。ドメインの `if` を一切持たず、React も Next.js も知りません。**編集する場所ではありません。** | `shared/spacta/runtime.ts` |
-| **束縛アダプター** | **プラットフォームへの配線**。状態を保持して再描画を起こす（＝Reactそのもの）、時刻とIDを採取する。React / Next.js の変化が着地する唯一の場所。 | `shared/spacta/react.ts` |
-| **Source**（エッジ） | **非決定的な処理の入口**。現在時刻の取得、UUIDの生成、DB/APIのフェッチ（RSCエッジ）を行う。 | `shared/source.ts` |
-| **Effect** | **副作用の実行役**。ルーター遷移、トースト通知、クライアント側fetchを一手に引き受ける、唯一のディスパッチ地点。 | `shared/runEffect.ts` |
+**Effect語彙が機能ごとに分かれている理由。** 以前は `shared/runEffect.ts` が全Effectの単一ディスパッチ地点で、L7（shared は機能の型をimportできない）との組み合わせにより `Effect` union が全機能共有の1ファイルに集まっていました。「機能AにEffectを1つ足す」操作が機能Bの依存先の編集になる、という結合です。
 
-### パラダイム比較: 標準的なNext.js vs. Spacta
+これを解体した判断基準は次のとおりです。
 
-なぜSpactaがこれほど厳格な境界を課すのかを理解するために、標準的なNext.js開発との対比を示します。Spactaは2つの異なる軸で隔離を行っている点に注意してください — 以下の表の最初の2行は*機能内部の純粋性*（Core vs. 副作用）についてで、残りは*機能間・ワークフロー間の境界*についてです:
+> **機能を1つ足したときに、それは変わるか。**
+> - **変わらない** → **機構**（`post`、エンジン）→ 1箇所に集約してよい
+> - **変わる** → **語彙**（`Effect`、`Answer`）→ 集約せず、機能に持たせる
 
-| 観点 | 標準的なNext.js | Spactaアーキテクチャ |
-| :--- | :--- | :--- |
-| **関心の結合** | 状態、非同期フェッチ（IO）、日時ロジック、UIレンダリングがReactコンポーネント内で絡み合いがち。 | **完全な物理的分離**。純粋関数ロジック（`core.ts`）は副作用（`shell.tsx`, `runEffect.ts`）から厳格に隔離されている。 |
-| **AIとの協働** | AIは結合したコードベースを理解する必要があり、際限のないコンテキスト肥大化と高いマッピングコストにつながる。 | **コンテキストの封じ込め**。AIはアプリ全体ではなく、隔離された機能コンテキストの中だけで作業でき、注意の切り替えによる精度低下を防ぐ。 |
-| **ルールの強制** | ガイドラインはドキュメントやチームの慣習（**「hope-prompt」**）として存在するのみで、AIモデルは容易に無視・忘却する。 | **機械的検証**。上記の隔離の主張を裏付ける。厳格な境界（機能の隔離、Coreの純粋性）はASTパースによって監査・強制される（`npm run verify`）。 |
-| **データフロー** | 状態変化、APIフェッチ、副作用が様々なフックに散らばり、複雑で予測しづらいイベントを引き起こす。 | **単一方向のループ**。データは厳密に1つの閉じたループを流れる: `UI ➔ Action ➔ Pure Core ➔ New State & Effect ➔ runEffect ➔ UI`。 |
-| **見た目の保守** | 人間/AI開発者が、インラインのTailwind値や色名、レイアウトの重複を手作業でリファクタリングする労力を費やす。 | **自動化された庭仕事（Gardening）**。AI gardener（`npm run garden`）が生の見た目コードをセマンティックトークンと共有UIプリミティブへ集約する。 |
+共有宣言は結合を防いでいたのではなく、管理されているように見えるだけでした。2つの画面を縛るのはエンドポイントであって宣言ではありません。`/api/bookmarks` を変えれば、共有宣言があっても両方壊れます。**2機能が同じEffectを必要とする場合は、両方に書き出します**（duplication over coupling）。
 
----
+### 2-2. データフローのループ
 
-## 2. データフローのループ
-
-非同期の状態をあちこちに散らばらせる代わりに、データは単一の予測可能なループを流れます:
+状態変化を分散させる代わりに、データは1本のループを流れます。
 
 ```txt
-[UI (Shell / Component)] ➔ Action ➔ [Core (core.ts / Pure)] ➔ New State & Effect
-           ▲                                                      │         │
-           │───────────── Rerenders UI with New State ────────────┘         ▼
-           └────────────── Returns result as a new Action ─────────── [runEffect.ts]
+  [UI: shell.tsx / components]
+            │  Action（ユーザー操作）
+            ▼
+  [Core: core.ts（純粋）]
+            │
+            ├──▶ 新しい State ──▶ 再描画（UIへ）
+            │
+            └──▶ Effect[]（実行したいIOの宣言）
+                        │
+                        ▼
+                  [Engine] ──▶ perform.ts（実際のIO）
+                        │
+                        │  成功も失敗も、必ず Action に変換
+                        └──────────────▶ Core へ戻る
 ```
 
-### Before / After コード比較
+重要なのは最後の戻り線です。**Effectの結果は、成功も失敗も、必ずActionとして膜を通って戻ります。** 戻りの配線を書き忘れることがないのは、エンジンがそう作られているためです。ループの実装はプロジェクトに1つしかありません（この設計に至った経緯は §8-2）。
 
-#### Before（結合されたNext.jsコンポーネント）
-UI、非決定的な値（`new Date()`）、副作用（`fetch`）が絡み合った典型的なReactコンポーネント。AIによる回帰（リグレッション）が非常に起きやすい。
+### 2-3. Before / After
 
-```typescript
-// src/components/Counter.tsx (Client Component)
+#### Before — 結合されたNext.jsコンポーネント
+
+UI・非決定性（`new Date()`）・副作用（`fetch`）が同じ場所にある典型例です。
+
+```tsx
+// src/components/Counter.tsx
 'use client';
 import { useState, useEffect } from 'react';
 
 export default function Counter() {
   const [count, setCount] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState('');
+  const [lastTouched, setLastTouched] = useState('');
 
   useEffect(() => {
-    // ❌ UI内部に副作用がある（追跡不可能）
-    fetch(`/api/log?count=${count}`);
+    fetch(`/api/log?count=${count}`);        // ❌ UIの中に副作用（追跡できない）
   }, [count]);
 
   const handleIncrement = () => {
     setCount(count + 1);
-    // ❌ UI内部に非決定的な値がある（テスト不可能）
-    setLastUpdated(new Date().toISOString());
+    setLastTouched(new Date().toISOString()); // ❌ UIの中に非決定性（テストできない）
   };
 
   return (
     <div>
-      <p>Count: {count} (Updated: {lastUpdated})</p>
+      <p>Count: {count} (Updated: {lastTouched})</p>
       <button onClick={handleIncrement}>Increment</button>
     </div>
   );
 }
 ```
 
-#### After（Spactaによる分離）
-UIはシンプルなまま、計算処理と副作用は分離されている。AIはCSSに触れることなく、`core.ts` 内の計算ロジックだけを安全に再生成できる。
+#### After — Spactaによる分離
 
-```typescript
-// 1. src/features/counter/core.ts (純粋な計算処理)
-export function update(state: State, action: Action): { nextState: State; effect?: Effect } {
+**用語を1つ。** 以下に出てくる `correlationId` は**書き込みリクエストの整理番号**です。楽観的更新（先に画面を書き換え、後からサーバに送る）をしたあと、どの書き込みの結果が返ってきたのかをCoreが照合するために使います。**サーバが採番するIDとは別物**で、クライアント側で発行します。
+
+**① `types.ts` — 契約**
+
+```ts
+export type InitData = { now: string; initialCount: number };
+
+export type State = {
+  count: number;
+  lastTouched: string;
+  pending: string[];      // 実行中の書き込みのcorrelationId。Coreが持つ（Shellではない）
+  notice: string | null;
+};
+
+// この機能だけのEffect語彙。共有unionは存在しない。
+// ここにメンバを足しても、このディレクトリの外は変わらない。
+export type Effect =
+  | { type: "SAVE"; correlationId: string; key: string; value: string }
+  | { type: "LOG"; message: string };
+
+// 答えの形も、質問した機能が宣言する。サーバが採番したidがここに入って返る。
+export type Answer = { id: string };
+
+export type Action =
+  | { type: "INCREMENT"; now: string; correlationId: string }
+  | { type: "RESET"; now: string }
+  // 書き経路の戻り。Coreは両方を処理する必要がある。
+  // correlationId が null なのは、答えを求めていないEffect（LOG）の結果。
+  | { type: "EFFECT_SUCCEEDED"; correlationId: string | null; data?: Answer }
+  | { type: "EFFECT_FAILED";    correlationId: string | null; message: string };
+```
+
+**② `core.ts` — 純粋な計算のみ**
+
+```ts
+export function update(state: State, action: Action): [State, Effect[]] {
   switch (action.type) {
-    case 'INCREMENT':
-      return {
-        nextState: {
-          ...state,
-          count: state.count + 1,
-          lastUpdated: action.now, // ✅ 非決定的な時刻はエッジからActionを通じて注入される
-        },
-        effect: { type: 'LOG_COUNT', count: state.count + 1 } // ✅ 実行ではなく宣言のみ
+    case "INCREMENT": {
+      // 楽観的更新：先に反映し、書き込みを実行中として記録する
+      const next: State = {
+        ...state,
+        count: state.count + 1,
+        lastTouched: action.now,          // ✅ 時刻はActionから注入される
+        pending: [...state.pending, action.correlationId],
       };
+      return [next, [{ type: "SAVE", correlationId: action.correlationId,
+                       key: "count", value: String(next.count) }]]; // ✅ 実行ではなく宣言
+    }
+
+    case "EFFECT_SUCCEEDED": {
+      if (action.correlationId === null) return [state, []];   // LOGの答え。書き込みではない
+      // このカウンタはサーバのidを格納する場所がないので、実行中の記録を消すだけ。
+      // 保存した行を画面に持つ機能は、ここで action.data.id を採用する（下記）。
+      return [{ ...state, pending: state.pending.filter(c => c !== action.correlationId) }, []];
+    }
+
+    case "EFFECT_FAILED": {
+      // 補償。記録した書き込みだけを取り消す
+      if (action.correlationId === null) return [state, []];
+      if (!state.pending.includes(action.correlationId)) return [state, []];
+      return [{ ...state,
+                count: state.count - 1,   // ← この補償が意味的に正しいかは verify の管轄外（§1-5）
+                pending: state.pending.filter(c => c !== action.correlationId),
+                notice: action.message }, []];
+    }
+
+    case "RESET":
+      return [{ ...state, count: 0, lastTouched: action.now },
+              [{ type: "LOG", message: "reset" }]];
+
+    default: {
+      const _exhaustive: never = action;  // 分岐を足し忘れるとtscが落ちる
+      throw new Error(String(_exhaustive));
+    }
   }
 }
+```
 
-// 2. src/features/counter/shell.tsx (JSXの配線だけ。状態も時刻採取もエンジン側)
-'use client';
-import { useSpacta } from '@/shared/spacta/react';
-import { runEffect } from '@/shared/runEffect';
-import { init, update } from './core';
+> **`Answer` を実際に採用する機能は、`EFFECT_SUCCEEDED` でこう書きます。**
+>
+> ```ts
+> case "EFFECT_SUCCEEDED": {
+>   if (action.correlationId === null) return [state, []];
+>   const id = action.data?.id ?? null;
+>   const rows = id === null
+>     ? state.rows
+>     : state.rows.map(r =>
+>         r.tempId === action.correlationId
+>           ? { ...r, id, tempId: null }        // ← 仮IDをサーバ採番のidに差し替える
+>           : r);
+>   return [{ ...state, rows,
+>             pending: state.pending.filter(c => c !== action.correlationId) }, []];
+> }
+> ```
+>
+> **`action.data` を使うべき機能で使わないという不具合が、実際に検出されずに残っていました**（§8-3）。上のカウンタは採用する対象を持たないため消しているだけで、「採用しなくてよい」という例ではありません。
 
-export function CounterShell({ initData }: { initData: InitData }) {
-  // 状態はエンジンが持ち、Effectのキューもエンジンが直列に回す。
-  // `now` は膜の外側（アダプター）で採取され、Actionの値としてCoreに届く（L3）。
-  const [state, dispatch] = useSpacta({ init: () => init(initData), update, perform: runEffect });
+**③ `perform.ts` — この機能のIO**
+
+```ts
+import { post } from "@/shared/runEffect";   // post<T>(url, payload): Promise<T | null>
+import { assertNever } from "@/shared/types";
+import type { Answer, Effect } from "./types";
+
+export async function perform(effect: Effect): Promise<{ data?: Answer } | null> {
+  switch (effect.type) {
+    case "SAVE": {
+      // 戻り値のidはサーバが採番したもの。Coreで生成してはいけない
+      const answer = await post<Answer>("/api/sample", { key: effect.key, value: effect.value });
+      return answer && { data: answer };   // post は 204 のとき null を返す
+    }
+    case "LOG":
+      console.log(effect.message);
+      return null;              // 答えを求めていないEffectには持ち帰る値がない
+    default:
+      return assertNever(effect);
+  }
+}
+```
+
+**④ `shell.tsx` — JSXの配線のみ**
+
+```tsx
+"use client";
+import { useSpacta } from "@/shared/spacta/react";
+import { CounterActions } from "./components/CounterActions";
+import { CounterSummary } from "./components/CounterSummary";
+import { init, summarize, update } from "./core";
+import { perform } from "./perform";
+import type { Action, Answer, Effect, InitData, State } from "./types";
+
+export function SampleShell({ initData }: { initData: InitData }) {
+  // 状態はエンジンが保持し、Effectのキューもエンジンが直列に回す。
+  // now と id は膜の外側（アダプター）で採取され、Actionの値としてCoreに届く。
+  const [state, dispatch] = useSpacta<State, Action, Effect, Answer>({
+    init: () => init(initData), update, perform,
+  });
 
   return (
-    <div>
-      <p>Count: {state.count} (Updated: {state.lastUpdated})</p>
-      <button onClick={() => dispatch(({ now }) => ({ type: 'INCREMENT', now }))}>
-        Increment
-      </button>
-    </div>
+    <section className="space-y-6">
+      <CounterSummary
+        count={state.count}
+        lastTouched={state.lastTouched}
+        summary={summarize(state)}      // 表示用の整形も純粋関数（Core）に置く
+        pending={state.pending.length}
+        notice={state.notice}
+      />
+      <CounterActions
+        onIncrement={() =>
+          dispatch((mint) => ({ type: "INCREMENT", now: mint.now, correlationId: mint.id() }))}
+        onReset={() => dispatch((mint) => ({ type: "RESET", now: mint.now }))}
+      />
+    </section>
   );
 }
 ```
 
-*（v0.9のこの例は `useReducer` と `new Date()` をシェルに書いていました。v0.10でどちらもシェルから消えています——状態保持と非決定性の採取は機構であり、機能ごとに書き直される場所に置くものではないからです。`update` が返した `Effect` を誰がどう実行するかも、もうシェルの仕事ではありません。）*
+`shell.tsx` に `useState` も `new Date()` も `crypto.randomUUID()` もありません。状態保持・非決定性の採取・Effectのループはいずれも機構であり、機能ごとに書き直す対象ではないためです。
+
+> ただし、**shellがこの規律を守っていることは検査されていません。** `verify` の出力にも `Judgement kept out of shell.tsx → not checked` と印字されます。ここはSpactaで数少ない、人間が確認する必要のある場所です。
+
+### 2-4. 標準的なNext.jsとの対比
+
+| 観点 | 標準的なNext.js | Spacta |
+|---|---|---|
+| **関心の結合** | 状態・fetch・日時・レンダリングがコンポーネント内に混在 | **物理的分離。** `core.ts` は副作用から隔離される |
+| **AIとの協働** | 結合したコードベース全体の理解が必要 | **コンテキストの限定。** 1機能のファイルだけで作業できる |
+| **ルールの強制** | ドキュメントとチーム慣習（hope-prompt）。AIは無視・忘却しうる | **機械的検証。** AST解析で強制（`verify`） |
+| **データフロー** | 状態変化・fetch・副作用が各種フックに分散 | **単一方向のループ。** UI → Action → Core → State & Effect → perform → Action |
+| **見た目の保守** | インラインのTailwind値やレイアウト重複を手作業でリファクタ | **検知の自動化。** `garden` が片付け指示書を出す（§5） |
 
 ---
 
-## 3. 中核のビジョン: AIが全て書く。人間の介入は任意
+## 3. `verify` が保証すること／しないこと
 
-標準的な開発では、状態機械、バリデーションルール、統合のためのボイラープレートを書くのは骨の折れる作業です。Spactaではこう変わります:
+隔離は、それを信頼できて初めて意味を持ちます。Spactaは「境界は守られているはず」と主張するのではなく、TypeScriptの構文木を歩いて確認します。
 
-* **AI-First開発**: **コードベースの全てをAIが書きます。** `core.ts` の純粋なビジネスロジックも、`shell.tsx` や `components/` のUI構造も、どちらもです。
+**Law（掟）は10本**です。以下は代表的な7本で、**L5・L6・L8はここでは省きます**（L6は検証器自身の検査で後述、L8は情報表示のみ）。全10本は [`SPACTA.md`](../../SPACTA.md) にあります。
 
-* **人間の介入は任意 — Why?**: これは「AIは論理に強く、人間はデザインに強い」という話ではなく、相対的な向き不向きの問題です。AIが力を発揮するのは、これまで無数に見てきた密で機械的な反復構造 — reducer、バリデーションルール、状態遷移 — です。逆にAIが本質的に手を出せないのは、あなたの暗黙知、つまり「何が正しく見え、正しく機能するか」という蓄積された感覚と、全体を俯瞰しながら書く力です。ピクセルパーフェクトなUI作業が要求するのは、まさにこの種の判断です。
+| | 内容 |
+|---|---|
+| **L1 隔離** | 機能が他機能の内部をimportしない |
+| **L2 純粋性** | `core.ts` にIOと非決定性を書かせない（`fetch` / `new Date` / `Math.random` / `await` …） |
+| **L3 注入** | 非決定性は値として渡す。**サーバ採番IDも含む** |
+| **L4 網羅性** | `effect.type` のswitchは網羅的に閉じる |
+| **L7 逆依存の禁止** | `shared/*` が `features/*` の内部をimportしない |
+| **L9 / L10** | `components/` と `shared/ui` でIO禁止・`useState` 禁止。AIに委譲する量が最も多い場所のため |
 
-* **人間の介入は任意 — How?**: あなたは必須のボトルネックではありません。`shell.tsx` は `core.ts` のロジックに一切触れないため、UIの調整は、慣習ではなく構造によって安全です。AIの生成物が問題なく動くなら、そのまま出荷して構いません。UIをピクセル単位で詰めたいとき、あるいはデザインが主観的な調整を要するときは、**いつでもレイアウト・スタイル・CSSに手を入れられます。** どこで、いつ手を入れるかは、あなたの判断です。
+L4に補足があります。網羅的に閉じる形は2つあります。`assertNever` / `: never` で閉じるのが基本ですが、**Effectを1本しか宣言していない機能ではTypeScriptが1要素unionを潰すため `never` が書けません。** その場合は、`undefined` を戻り型に含まない関数の最後の文にswitchを置きます（メンバを足すとTS2366が出ます）。
+
+**Lawに例外指定（ignore / disable コメント）はありません。** 抜け道を作らないのが設計判断です。`garden` の片付け提案だけは `// garden:keep <理由>` で保留できますが、保留した項目も指示書に残り続けます。
+
+### 実際の出力
+
+`verify` は実行のたびに、何を何件走査したか、この緑が何を保証し何を保証しないかを印字します。
+
+```
+  Scanned:
+    L1  cross-feature-imports         6 files   ✓ 0
+    L2  core-purity                   1 files   ✓ 0
+    ...
+    —   engine-portability            1 files   ✓ 0
+    —   data-layer-import             6 files   ✓ 0
+
+  Tiers: sample T3
+    A tier states what this project adopted, not a violation: no tier changes the exit code.
+
+✓ Laws (L1, L2, L3, L4, L5, L7, L9, L10): No violations
+✓ Blocking checks that are not Laws (engine-portability, data-layer-import): No violations
+
+  Guaranteed by this green:
+    L1  No feature imports another feature's internals  (6 files)
+    ...
+  NOT guaranteed by this green:
+    - Type integrity (props / contracts)              → run `tsc --noEmit` separately
+    - Judgement kept out of shell.tsx                 → not checked
+    - Effect results actually reaching Core at runtime → partially checked
+    - Write-path round trip in features below T3      → not checked
+    - Semantic correctness                            → never checked
+```
+
+緑を根拠に差分を読まずに済ませる前に、この2つのリストを確認してください。特に次の2点です。
+
+- **型整合は緑に含まれません。** `tsc --noEmit` を別途実行してください（`--tsc` フラグでまとめて実行できます）。
+- **shellに判断が溜まっていないことも緑に含まれません。**
+
+実行時間は57ファイルのプロジェクトで0.8秒、starterで0.25秒です。毎イテレーション実行できる速度です。
+
+### 段位（Tier）— 何を採用したかを機能ごとに印字する
+
+Spactaを部分的にしか採用していない機能にも `verify` は緑を出します。それは「その機能について往復が検証された」という意味ではありません。そのため、何を採用したのかを機能ごとに印字します。
+
+| 段位 | 意味 |
+|---|---|
+| **T1** | `core.ts` はあるが、Effectを宣言しない（読み取り専用の画面など） |
+| **T2** | Effectを宣言するが、`correlationId` を運ばない、または戻りのcaseが揃っていない。**書き経路の往復は検証されていない** |
+| **T3** | Effectが識別子を運び、Coreが成功・失敗の両方を処理する。**往復が閉じている** |
+
+**段位は `verify` が `core.ts` の形から自動判定します**（Effectが `correlationId` を運ぶか、Coreが `EFFECT_SUCCEEDED` / `EFFECT_FAILED` の両caseを持つか）。自己申告ではありません。
+
+**ただしそれは形の判定であって、往復が意味のある往復になっている保証ではありません。** T3と判定されながら振る舞いのテストが1つもない機能が実際に2つありました（§8-3）。段位は「Spactaのどこまでを採用したか」の表示であって、正しく動くことの保証ではありません。
+
+**段位は違反ではないので、赤にならず終了コードも変えません。** 往復を必要としない機能に往復を強制するのは過剰であり、利用者が警告を無視する習慣をつけることになります。部分的に採用した人が受け取るのは、実際には保証されていない安心感で、これは保証がないことより有害です。
+
+### その他の仕組み
+
+**Lawではないが緑を止める検査。** Lawは10本のままで、それとは別に緑を止める検査が2つあります（エンジンに `react`/`next` を入れない、機能がデータ層をimportしない）。Spactaが普遍的に主張する性質ではないため、11本目のLawにはしていません。
+
+**0件走査は緑ではありません。** 走査したファイル数が0件のとき、`verify` は `INCONCLUSIVE`（終了コード2）を返します。「違反がなかった」と「何も見ていなかった」は区別できなければ同じ意味だからです。
+
+**L6は検証器自身を検証します。** `verify/fixtures/` に植えた既知の違反を必ず弾くこと、正常な検体を誤検出しないこと、レジストリの全globが参照コーパスで最低1ファイルを選ぶこと。3つ目があるのは、globのタイプミスで0件走査になっていた検査が、自己テストを通過したうえで緑を報告していたためです。
+
+**L1が見るのは静的importだけです。** `import ... from "..."` の宣言を歩いています。**動的 `import()`、`require()`、文字列を組み立てたパスは見ていません。** 意図しない違反を検出するためのもので、意図的な回避は防げません。
 
 ---
 
-## 4. なぜAST（構文木）ベースの検証なのか（`npm run verify`）
+## 4. 実際の作業ループ
 
-隔離は、それを信頼できて初めて意味を持ちます。AIモデルは、指示を幻視したり、広い文脈の中で取りこぼしたりしがちなので（例: *「core内に new Date() を書かないで」*）、Spactaは「境界は守られているはず」とあなたに信じさせるのではなく、hope-promptをTypeScriptの構文木パーサー（`verify.mjs`）による**機械的検証**に置き換えます。
+### 4-1. 実装はAIが書く。人間の仕事は「凍結」と「順序」
 
-* **L1 隔離（Isolation）**: 機能間のimportを禁止し、AIがFeature Aを読み込んだり壊したりせずにFeature Bへ取り組めるようにする。
-* **L2 純粋性（Purity）**: Coreファイルを物理的に監査し、IO・フェッチ・時刻生成が紛れ込んでいないことを保証する。
-* **L4 網羅性（Exhaustiveness）**: `effect.type` を分岐するswitch文は、必ず網羅性チェック（`assertNever` / `: never`）で閉じなければならない。これは、§0 の2つ目〈明示的構造による複雑性の低減〉で述べた「明示的な状態機械がAIの複雑性を下げる」という主張を、実際に強制している箇所です — どの分岐も暗黙のまま取りこぼされていないことを、検証器が確かめます。
-* **L9 提示純度 / L10 コンポーネント無状態性**: AIに委譲する量が最も多いのは `components/` と `shared/ui` です。ここに `fetch` や `new Date()` が紛れ込めば単方向ループの外側にIOができ、ここに `useState` が生えればドメイン状態がCoreの外に漏れます。L9とL10はこの2つを機械的に弾きます（`shared/ui` の部品ローカルな状態は、ドメイン状態ではないのでL10の対象外です）。
-* **検証器はあなたの審判 — ただし審判の管轄範囲を読んでください**: vibe coderであるあなたが、AIのアーキテクチャ的な規律を二重チェックする必要はありません。ただし「グリーン＝すべて正しい」ではありません。**`npm run verify` は実行のたびに、何を何件走査したか、そしてこの緑が何を保証し何を保証しないかを印字します。**
+* **実装は全てAIが書きます。** `core.ts` の純粋ロジックも、`shell.tsx` や `components/` のUI構造もです。
 
-  ```
-    Scanned:
-      L1  cross-feature-imports        39 files   ✓ 0
-      ...
-    Tiers: pageview T3, moderation T2, materialrequest T2, catalog T1, search T1, profile T1
-      T2 features declare Effects but do not receive their results — the write-path
-      round trip is NOT verified for them.
-    Guaranteed by this green:  ...
-    NOT guaranteed by this green:
-      - Type integrity (props / contracts)  → run `tsc --noEmit` separately
-      - Judgement kept out of shell.tsx     → not checked
-      - Write-path round trip in features below T3 → not checked — the Tiers line names them
-      ...
-  ```
+* **人間に残る仕事は2つで、これは任意ではありません。**
+  1. **契約（`types.ts`）を先に凍結する。** §1-2の「衝突ゼロ」が成立した条件です。AIに書かせてもよいですが、確定させるのは人間です
+  2. **上流を実ファイルとして確定させてから、下流を委譲する。** `shared/ui` → `components/` → `shell` → `app/` の順です。**散文によるAPIの説明は契約になりません。コードだけが契約です**（§7-3）
 
-  緑を「読まずに受け入れてよい」の根拠にする前に、この2つのリストを読んでください。特に**型整合（`tsc --noEmit` は別途必要）**と、**shellに判断が溜まっていないこと**は緑に含まれません。
-  **段位（Tiers）はv0.10で足した行です。** Spactaは深い部分（Effectの往復）を採用しなかった機能に対しても緑を出しますが、それは「その機能について往復が検証された」という意味ではありません。途中まで採用した人が受け取っていたのは「動いていない安心」で、これは穴より悪い——だから何を採用したのかを機能ごとに口に出します。**段位は違反ではないので、赤にはならず終了コードも変えません。** 往復を必要としない機能に往復を強制するのは潔癖症であり、利用者に「無視リストに手を伸ばす訓練」をさせることになります。
-  なお、走査したファイル数が0件のとき、`verify` は緑を名乗らず `INCONCLUSIVE`（終了コード2）を返します。「違反が無かった」と「そもそも何も見ていなかった」は、区別できなければ同じ意味だからです。
+  この2つを飛ばすと、Lawが緑のまま並列作業が衝突します。
 
----
+* **任意なのはUIの調整です。** AIが得意なのは、学習データに多く含まれる機械的な反復構造 — reducer、バリデーション、状態遷移 — です。逆にAIが扱えないのは、「何が正しく見え、正しく機能するか」という蓄積された感覚です。`shell.tsx` は `core.ts` のロジックに触れないため、UIの調整は構造上安全に行えます。生成物が問題なく動くならそのまま出荷して構いません。
 
-## 5. Gardenerのワークフローとマインドセット（`npm run garden`）
+### 4-2. 1機能の進め方
 
-* **速く書き、後でリファクタリング**: あなたやAIがUIを書いている間は、場当たり的なTailwindの値（`bg-[#ff0000]` など）を使ったり、レイアウトのマークアップを重複させたりして、遠慮なく速く進めて構いません。
-* **Gardenerによるリファクタリング**: `npm run garden` を実行すると、AI gardenerに対して、生の色・間隔をリファクタリングし、レイアウトの重複を統合し、それらを共有UIプリミティブ（`src/shared/ui`）へ集約するよう指示します。
-* **Vibe Coderのマインドセット**: AI gardenerのリファクタリングはヒューリスティックであり、時には小さな見た目の調整が必要になることがあります。高速なプロトタイピングと引き換えに、出力が完璧ではないかもしれないことを受け入れてください。
-* **検証による裏付けは引き続き有効**: Gardeningは、上記の境界を回避するための抜け道では決してありません — すべてのgardeningタスクは `npm run verify` をグリーンに保つ必要があり、変更が隔離や純粋性を壊す場合は、採用されずに元へ戻されます。
+```
+1. 人間   features/todo/types.ts に State / Action / Effect / InitData を書いて凍結する
+             ↓
+2. 人間→AI 「SPACTA.md と features/todo/types.ts を読んで core.ts を実装して」
+             ※ 他機能のファイルは渡しません。これがSpactaの本題です
+             ↓
+3. AI     実装 → verify → 赤なら自分で直す → 緑になるまで繰り返す
+             ↓
+4. 人間   verify --tsc で型も確認（型整合は verify の緑に含まれないため）
+             ↓
+5. AI     perform.ts → components/ → shell.tsx を実装（同じループ）
+             ※ 上流から順に。並列に投げるなら上流が実ファイルになってから
+             ↓
+6. 人間   見た目を調整する。または garden で片付け指示書を出す（§5）
+```
+
+AIに渡すのは **`SPACTA.md`（79行）とその機能の `types.ts`** だけです。他機能のファイルも、この人間向けガイドも渡しません。
 
 ---
 
-## 6. Spactaの立ち位置 — 正直な現在地
+## 5. Gardener（`garden`）
 
-この章は、Spactaを過大にも過小にも見せないための章です。「これはパラダイムシフトなのか、それともNext.jsの部分的な問題を解決するだけなのか」という問いに、正面から答えます。
+速く書き進めると、UIコードに場当たり的なTailwindの値（`bg-[#ff0000]`）や重複したマークアップが溜まります。
 
-結論: **Spacta単体はパラダイムシフトではありません。しかし「AIが書くコードを、人間の記憶や祈りではなく機械が検証可能な構造に閉じ込める」という、いま生まれつつあるパラダイムの、初期実装の一つです。**
+**`garden` 自体はLLMを呼びません。** `verify` の info/warn（機械が検出するが、修正の担い手がいなかったもの）を集約し、AIが機械的に処理できる指示書JSON（`garden-report.json`）に変換する決定論的なスクリプトです。検知と修正を分離してあるため、**`garden` を実行してもコードは変更されません。**
 
-### 6.1 Spactaの本当の系譜はElmではなく、構造化プログラミング
+- 書いている最中は雑に進めて構いません
+- `garden` が指示書を出したら、それをコーディングエージェント（Claude Code等）に渡して実行させます。**その判断と課金は利用者側です**
+- `verify` が赤なら、指示書はタスクを出しません（片付けよりLawの修正が先）
+- 意図的な保留は対象行に `// garden:keep <理由>` と書けます。保留した項目も指示書に残ります
+- 片付け後も `verify` は緑である必要があります。**巻き戻しは git で行ってください**（ツールは巻き戻しません）
 
-Spactaの構成要素 — 純粋コア（FCIS）、Elm/Reduxループ、bounded context、非決定性の注入 — はすべて既存の考え方です。ただし、参照すべき本当の系譜はElmではなく**構造化プログラミング**だと私たちは考えています。
+*なお、UIの見た目の統一だけは1機能に閉じては保てません。ページ間でデザインを揃えるときは、複数機能のUIを横断して確認しながら整えることを推奨します（importするわけではないので隔離のルールには触れません）。これは調整フェーズの推奨であって、実装時の作業分割の規約ではありません。*
 
-Dijkstraの「goto考害論」の本質は、「gotoを使うと制御フローが追跡不能になり、プログラムの正しさを*ローカルに*推論できなくなる」という主張でした。2013年のBookout対Toyota訴訟では、鑑定人Michael Barrがトヨタのエンジン制御ソフトに約1万個のグローバル変数と多数のMISRA違反を指摘しました。法廷で決定打になったのは「バグの存在証明」ではなく、**グローバル変数=追跡不能な暗黙のデータフローゆえに「このコードは因果を推論できない」と示されたこと自体**でした。追跡不能性そのものが過失の証拠になったのです。
+---
 
-SpactaのL1/L2は、同じ主張のデータフロー版 — いわば**「暗黙の接続考害論」** — です。§0で述べた「バグを無くすのではなく、バグを局所的・明示的・決定的にする」という定式化は、この系譜の中に正確に位置づきます。
+## 6. よくある質問
 
-ただし歴史から学ぶべき教訓もここにあります。構造化プログラミングが「パラダイムシフト」になったのは、規約集としてではなく**言語仕様に焼き込まれたから**です。この基準で見ると、SpactaはNext.jsの上に載せた規約+リンタであり、しかもNext.js本体はServer Actions・暗黙のfetchキャッシュ・revalidationと、むしろ「魔法を増やす」方向に進化しています。つまりSpactaはフレームワークの潮流と構造的に逆張りしています。パラダイムシフトになるには、この制約がフレームワーク層・言語層に採用される必要があります。
+**Q. 既存のNext.jsアプリに後から入れられますか。**
+構造上は可能です。`verify` は機能ごとに段位を出すので、移行した機能から順に T1 → T3 と上げられます。ただし既存アプリへの適用例はまだありません。
 
-### 6.2 解決している範囲の正直な地図
+**Q. 1画面に2つの機能を置きたいときは。**
+`app/page.tsx`（サーバ境界）が両方のshellを並べます。**L1が歩くのは `src/features/` の中だけなので、`app/` は複数の機能をimportできます。** ただし2つの機能は状態を共有しません。共有したくなった場合、それは1つの機能である可能性があります。
 
-**構造的に潰せているもの:**
+**Q. 認証状態のような、全機能で使う状態は。**
+サーバ境界（`app/**/page.tsx`）で読み、**各機能の `InitData` の一部として配ります。** **Spactaにクライアント側のグローバルストアはありません。** 「ログイン状態が変わる」は新しい `InitData`（＝ナビゲーションかリロード）であって、Effectではありません。
 
-- 機能間のコードレベル結合（L1/L7）
-- ロジックと外界の暗黙接続（L2/L3）— coreの出力が `(state, action)` だけで決まる
+**Q. フォームやルーティングはどこに置きますか。**
+フォームの状態は機能の `State`、送信は `Effect`、バリデーションは `core.ts` の純粋関数です。ルーティングは `NAVIGATE` のようなEffectにして `perform.ts` から実行します（`next/navigation` はコンポーネントでは禁止 — L9）。
+
+**Q. Server Actions は使えますか。**
+禁止していませんが、推奨もしていません。Spactaの立場は「IOは `perform` から1本の経路で出す」なので、Server Actions はその経路の外にもう1本の道を作ります。§7-2 のとおり、Next.jsの暗黙性はSpactaのLawがほぼ素通しにしている領域です。
+
+**Q. テストはどう書きますか。**
+`core.ts` は純粋関数なので、`(state, action)` を渡して返り値を検査するだけです。フレームワークは不要です。Spactaが推奨するのは**振る舞いのassertionを書くこと**です。それがない機能は、壊れていても検出されません（§8-3）。
+
+**Q. Lawに例外指定はありますか。**
+ありません（§3）。
+
+---
+
+## 7. Spactaが解決していないこと
+
+この章に挙げるのは、版が上がっても残る構造的な限界です。運用原則は「穴があることは許される。穴を隠すことは許されない」です。
+
+前提として、**Spacta単体はパラダイムシフトではありません。** 「AIが書くコードを、機械が検証可能な構造に閉じ込める」というアプローチの初期実装の一つです。
+
+**構造的に解決できているもの：**
+
+- 機能間のコードレベル結合（L1 / L7）
+- ロジックと外界の暗黙接続（L2 / L3）— coreの出力が `(state, action)` だけで決まる
 - 分岐の書き忘れ（L4）
-- 「hope-prompt」問題 — これはAI時代固有の新しい問題設定で、Spactaの最も独自性がある貢献
+- hope-prompt問題 — AI時代固有の問題設定で、Spactaで最も独自性のある部分
 
-*（L1〜L10の具体的な定義は、AI向け実行ルール [`SPACTA.md`](../../SPACTA.md) を参照してください。）*
+以下は解決できていないものです。
 
-**潰せていないもの（利用者はここを自覚してください）:**
+### 7-1. データを経由した結合
 
-- **データを経由した結合。** L1はimportを禁じますが、チェックアウト機能と在庫機能が同じDBテーブル・同じAPIを触れば、遠隔作用はデータ層で復活します。これはマイクロサービスが10年かけて学んだ教訓（コード結合を消すと、結合はスキーマとプロトコルに移住する）と同型です。verifyはコードしか見ていません。
-  *実測（Living Document / 4,722行）: `shared/source/queries.ts` が **508行**まで育ちました。`shared/types.ts`（175行）の約3倍です。`TRACE_SELECT` 定数を pageview / search / profile の**3機能が共有**しており、`traces` テーブルに列を1つ足す判断は3機能の読み経路に同時に波及します。**L1は緑のままです。** 実装者の証言によれば、この結合を生んだのは「読みモデルの組み立てを source 側でやる」という設計判断であり、**8つの掟のどれも賛成も反対もしませんでした**。*
-- **Next.js自身の暗黙性。** RSCのキャッシュ意味論、revalidateのタイミング、client/server境界のシリアライズ — Next.js最大の「追跡不能」はここにあり、SpactaのLawはこれをほぼ素通しにしています。
-- **共有上流の変更。** L1は横方向（機能↔機能）、L7は逆方向（shared→features）を止めますが、**正しい向きの縦の依存**（`components` / `shell` → `shared/ui`）は**どのLawも守っていません**。実測では30ファイルがこの辺を渡っています。`shared/ui` の `Button` の prop 名を変えれば下流は一斉に壊れますが、それを検出するのは `verify` ではなく `tsc` です。並列委譲では、**上流を実ファイルとして確定させてから下流に着手**してください（`SPACTA.md` §4-6）。
-- **Law同士の緊張 — Effect語彙の大域化。** L7により `shared/runEffect.ts` は機能側の型を import できません。したがって単一ディスパッチ地点を保つ限り、`Effect` union は全機能で共有される1ファイルに集まります。「機能Aに Effect を1つ足す」操作が、機能Bの依存先の編集になります。これはL1の隔離が及ばない、Law同士の相互作用による結合です。
-- **書き経路の戻り。** L3は「非決定性は値として注入せよ」と言い、サーバ採番IDもその対象ですが、v0.9時点では**`verify` が戻り経路を走査していませんでした**。実測では、失敗時に楽観的更新が取り消されず、仮ID（`temp_*`）がそのままサーバへ送られる不具合が、**verify緑・tsc 0エラー・E2E通過のまま**残っていました。3つのゲートが同じ一点で同時に盲目になります。
-  *（v0.10 訂正 — ここは**検査ではなく構造**で閉じました。実際に何が起きていたかを正確に書きます: Effectのループ（`drain`）が**同一プロジェクト・同一著者の中で3回手書きされ、うち2つはサーバの答えを捨てていました**。その2機能のEffectは識別子を持たないためL3の受け皿検査が発火せず、**verifyは緑のまま**でした。つまりこれは「プロジェクトごとに再発明される」問題ではなく、1つのプロジェクトの中で分岐していた問題です。v0.10では `shared/spacta/runtime.ts` がループの唯一の実装になり、識別子を持たないEffectにも結果を**無条件に**Actionとして返します。したがって「戻りを安価にASTで追跡する方法」という問いは、解決ではなく**消滅**しました——唯一の実装が正しければ、往復は検証する対象ではなくなります。ただし `verify` 自身が配線を追跡するようになったわけではありません。緑の根拠は「唯一の実装が正しいこと」であり、どの機能が実際に往復を使っているかは、v0.10の `verify` が印字する**段位**が申告します。*
-- **意味的な正しさ。** §0で述べた通り、`count + 2` はグリーンで通ります。
+L1はimportを禁じますが、チェックアウト機能と在庫機能が同じDBテーブル・同じAPIを触れば、遠隔作用はデータ層で復活します。マイクロサービスが学んだ教訓（コード結合を消すと、結合はスキーマとプロトコルに移る）と同型です。**verifyはコードしか見ていません。**
 
-つまり、「Next.jsの部分的な問題しか解決しない」は事実です。ただしその「部分」は、*AIエージェントが並列に安全に書ける単位を作る*という目的に対しては急所を突いています。全部を解決していないことと、正しい一部を解決していることは両立します。
+> *参照アプリ（未公開）での実測：機能ゾーンが64ファイル4593行に対し、**データアダプタ層が7ファイル1250行**。契約ファイル（`shared/types.ts`）は37行なので、**データ層は契約の33倍**あります。`TRACE_SELECT` という1つのSQL定数を複数機能の読み経路が共有しており、テーブルに列を1つ足す判断がそれら全部に同時に波及します。**L1は緑のままです。** この結合を生んだのは「読みモデルの組み立てをsource側でやる」という設計判断であり、**10本のLawのどれも賛成も反対もしませんでした。***
 
-### 6.3 保証の階段の、どこにいるか
+`npm run measure` は共有シンボルごとの利用範囲（spread）を出力するので、結合の量は計測できます。防止はできません。
 
-ソフトウェアの保証（assurance）には階段があります: **構文的な境界検査（リント） → 静的解析 → property-based testing → モデル検査 → 形式的証明**。安全重要システムの世界（MISRA、ISO 26262、SPARK Ada、seL4）は上の段にいます。Spactaのverifyは、この階段の一番下の段 — 構文的境界検査 — にいます。これは恥ずかしいことではなく、コストが最も低く、AIのループに組み込みやすい段だからこそ選んでいます。ただし、自分がどの段にいるかの自覚は持って公開します。
+### 7-2. Next.js自身の暗黙性
 
-そして、上の段への道は既に構造的に開いています。coreが純粋なステートマシンであることは、property-based testingやモデル検査の入力に**そのまま使える**ことを意味します。これは次項につながります。
+RSCのキャッシュ意味論、revalidateのタイミング、client/server境界のシリアライズ — Next.jsで最も追跡が難しい部分はここにあり、SpactaのLawはこれをほぼ素通しにしています。加えてNext.js本体はServer Actionsや暗黙のfetchキャッシュなど、暗黙の機構を増やす方向に進化しています。**Spactaはフレームワークの進化方向とは逆を向いています。**
 
-### 6.4 フライトレコーダー — まず自分の定理の検算、副産物として監査可能性
+### 7-3. 共有上流の変更
 
-Spactaの純粋coreは、`update` が純粋で入力が全部明示なら **Actionログを取るだけでフライトレコーダーになる** という性質を持っています。v0.9ではこれを「監査可能性」という製品機能として掲げていましたが、**順序が逆でした。第一の用途は、Spacta自身が主張している定理の検算です。** 監査可能性は、そのついでに手に入ります。
+L1は横方向、L7は逆方向を止めますが、**正しい向きの縦の依存**（`components` / `shell` → `shared/ui`）は**どのLawも守っていません**。`shared/ui` の `Button` のprop名を変えれば下流は一斉に壊れますが、検出するのは `verify` ではなく `tsc` です。§4-1 の「上流を先に確定させる」はこのために必要です。
 
-Spactaが主張している定理はこうです。
+### 7-4. 機能が本当にエンジンを使っているか
+
+L4は「`effect.type` を分岐するswitch」を見つけたときだけ発火します。**エンジンを使わず自前のループを書いたこと自体は `verify` は検出しません。** ループの実装を1つに集約したので構造的には起きにくくなっていますが、検査で閉じてはいません。
+
+### 7-5. 意味的な正しさ
+
+`count + 2` は緑で通ります（§1-5）。verifyは境界を検査するもので、意味は検査しません。
+
+### 7-6. 保証の階段の位置
+
+ソフトウェアの保証には段階があります。
+
+> **構文的な境界検査（リント） → 静的解析 → property-based testing → モデル検査 → 形式的証明**
+
+安全重要システム（MISRA、ISO 26262、SPARK Ada、seL4）は上の段にあります。**Spactaの `verify` は最下段の構文的境界検査です。**
+
+これは意図的な選択です。コストが最も低く、AIの write→run→fix ループに組み込める段はここだけです。毎イテレーション実行してもコストが破綻しない段が他にありません。
+
+上の段への道は構造的に開いています。coreが純粋なステートマシンであることは、property-based testing やモデル検査の入力にそのまま使えることを意味します。
+
+**まとめると、「Next.jsの部分的な問題しか解決しない」は事実です。** ただしその部分は、AIエージェントが並列に安全に書ける単位を作るという目的に対しては要点にあたります。全部を解決していないことと、正しい一部を解決していることは両立します。
+
+---
+
+## 8. 検査自身を検証する仕組み
+
+Spactaが他のアーキテクチャ規約と最も違うのはこの部分です。**検査があることではなく、その検査が実際に機能しているかを検査する工程があることです。**
+
+### 8-1. 主張している定理
+
+純粋なcoreには、Actionログを記録するだけでフライトレコーダーになる性質があります。Spactaが主張している定理は次のとおりです。
 
 > **verifyが緑なら、機能Fのバグは (1) Fの中に閉じ、(2) `(initData, actions[])` だけから再現でき、(3) 隠れた入力を持たない。**
 
-Rustの借用チェッカが価値を持つのは、チェッカ自体ではなく「この構造的性質が成り立つならこのバグのクラス全体が不可能になる」という定理が**証明されているから**です。Spactaの定理はv0.9まで**主張されているだけ**で、一度も検算されていませんでした。そして反例が実在しました——非直列な `drain` のせいで、Actionログをリプレイした最終状態とユーザーが実際に見た画面が一致しない。**(2) が偽だったのです。**
+Rustの借用チェッカが価値を持つのは、チェッカ自体ではなく「この構造的性質が成り立つならこのバグのクラス全体が不可能になる」という定理が証明されているためです。Spactaの定理は当初、主張されているだけで検算されていませんでした。
 
-**v0.10で実装しました**（`spacta/replay/`）。記録するのは `initData` とActionの列**だけ**で、Stateは記録しません（Stateを記録すると照合が自明に成功し、何も検証しません）。照合はその記録から `init` と `update` だけで状態を再導出し、**最終状態だけでなく各Action適用後の中間状態でも**突き合わせます。8つのシナリオ——直列操作、投票の連打、投票と投稿の重ね、書き込み失敗の注入、成功と失敗の混在、日付境界、複数機能、同じAction列の2回リプレイ——はいずれも「通ること」ではなく**定理を壊すこと**を狙って作られています。照合ハーネス自身にも既知の発散（Action の欠落、`update` に混ぜた `Date.now()`）を埋めた自己テストがあり、検出できることを確かめてあります。
+### 8-2. リプレイ照合と、そこで見つかったもの
 
-結果: **v0.10のエンジンで駆動した全シナリオで (2) は成り立ちました。** そして「投票の連打」「投票と投稿の重ね」を**v0.10以前の手書きループ**で走らせると、それぞれ1個目・5個目のActionで発散します——これが直列化が実際に効いたことの証拠です。
+`replay/` に照合の仕組みがあります。記録するのは `initData` とActionの列だけで、Stateは記録しません（Stateを記録すると照合が自明に成功し、何も検証しません）。照合はその記録から `init` と `update` だけで状態を再導出し、最終状態だけでなく各Action適用後の中間状態でも突き合わせます。
 
-**前提条件は2つあり、両方ともv0.10で満たされました。** 1つは **IOの結果もActionとして膜を通ること**（Effectの戻りがActionを経由せずstateへ入るなら、それは `update` の隠れた入力です）。もう1つは **状態遷移が直列化されていること**——リプレイは1本の列を畳む操作なので、実走行が並行に状態を上書きしていたら一致するはずがありません。v0.10では `shared/spacta` のエンジンが唯一の実行経路になり、そのエンジンが1つのActionずつ適用し、`perform` の唯一の呼び出し元でもあります。
+これを実装した結果、**定理の (2) に対する反例が実在したことが分かりました。** Effectのループが同一プロジェクト・同一著者の中で3回手書きされ、うち2つがサーバの答えを捨てていました。非直列なループのため、Actionログをリプレイした最終状態とユーザーが実際に見た画面が一致しません。
 
-**検算できないものも印字します。** データ層の共有（同じテーブルを読んでいるという結合。§6.2）は**プロセス内のActionログには現れません**。したがって定理の (4)「他機能への波及の不在」はこの方法では検証不能であり、照合はそのことを毎回出力に書きます。(1)「局所性」も、1機能のセッションが単独でリプレイして一致すれば**傍証**にはなりますが証明ではありません。
+この不具合は、**verify緑・tsc 0エラー・E2E通過のまま残っていました。** 3つのゲートが同じ一点で同時に検出できていなかったことになります。
 
-その上で、監査可能性は副産物として付いてきます。安全重要システムの事故（前述のトヨタ、あるいは長年運用された金融システムの障害）で事後に問われたのは「バグがなかったか」ではなく「**因果を後から追跡できたか**」でした。障害時の状態遷移を決定的にリプレイでき、「なぜこの状態になったか」に証拠付きで答えられる。バグの不在は証明できなくても、事故の調査可能性は構造で保証できる。AIが書いたコードが社会インフラに入っていく時代に、この性質の社会的価値は大きい——ただしそれは、**同じ機構で自分の定理を検算できるという事実の後についてくる利得**です。
+対処は検査ではなく構造で行いました。`shared/spacta/runtime.ts` がループの唯一の実装になり、識別子を持たないEffectにも結果を無条件にActionとして返します。**唯一の実装が正しければ、往復は検証する対象ではなくなります。** ただし §7-4 のとおり、`verify` が配線を追跡するようになったわけではありません。
+
+以降、エンジンで駆動した全シナリオで (2) は成立しています。同じシナリオを以前の手書きループで走らせると発散します。
+
+### 8-3. 変異テスト — 照合装置自体が何も検出していなかった
+
+「穴を植えて、検査が落ちるのを見る」工程を5回行い、**5回とも何かが見つかりました。** 最も重かったのは次の件です。
+
+> `pageview` 機能が**サーバの採番IDを採用しない**という穴を植えたところ、リプレイ照合14チェックも直列化テスト45アサーションも通過した。何も検出しなかった。
+
+往復という機構が存在する唯一の理由が、その機能では一度も検算されていませんでした。仮IDのまま残るデータは決定論的なので、リプレイは自分自身と一致します。
+
+5回試して5回とも見つかったことから手作業を止め、`tools/mutate.mjs` を作りました。T3機能の `core.ts` に往復を壊す変異を植え、行動ゲートを実行し、**生き残った（＝検査されていない）変異を報告します。**
+
+初回結果は **10変異中5つ生存**。2機能は振る舞いのassertionが1つもなく、`verify` はどちらもT3と判定していました（形は満たしているため当然です）。**リプレイ照合は10変異中1つも検出しませんでした** — 再現性しか見ていないという設計上の性質が、実測で確認されたことになります。対処後は 10 killed / 0 survived です。
+
+### 8-4. 検算できないものも印字する
+
+データ層の共有（§7-1）は**プロセス内のActionログには現れません**。したがって定理の「他機能への波及の不在」はこの方法では検証不能であり、照合は毎回そのことを出力に記載します。
+
+副次的に、監査可能性が得られます。障害時の状態遷移を決定的にリプレイでき、「なぜこの状態になったか」に記録付きで答えられます。バグの不在は証明できませんが、事後の追跡可能性は構造で確保できます。
 
 ---
 
-## 7. SpactaはAI時代でなければ登場しえなかった。それはなぜか
+## 9. 現時点の未成熟さ
 
-FCISもElmも人間の時代からありました。しかし主流にはなりませんでした。理由は単純で、**人間には冗長すぎて割に合わなかった**からです。網羅的なswitch文、全分岐への明示的な型付け — 検証可能性の対価として人間が支払う筆記コストが高すぎました。
+この章の内容は版ごとに変わります。§7 の構造的な限界とは性質が異なります。
 
-生成AIはこの取引のレートを変えました。AIにとって反復的で明示的な構造は、書くコストがほぼゼロであるどころか、**最も正確に再生産できる得意分野**です。書き手のコストが消えた瞬間、検証可能性だけが残って純利益になった。Spactaの一般形はこの一文に畳めます:
-
-> **AI時代に、「書くコスト」と引き換えに「検証可能性」を買う取引のレートが劇的に変わった。その新レートで設計をやり直す。**
-
-同時に、AIは新しい問題も持ち込みました。生成されたステートマシンが**正しいかどうか、人間には即座に分からない**という問題です。Spactaはこの両面 — AIの得意（明示的構造の量産）を活かし、AIの弱点(遵守の保証がない)をverifyで塞ぐ — を1つのループに組んだものです。AIはルールに沿って書き、グリーンになるまで自分で直す。検証器がAIの適応度関数になる。この**ループの設計**こそが、個々のパターン（それらは全部借り物です）ではなく、Spactaの本体です。
+- **道具がLawの30倍ある。** `verify.mjs` 2600行超が `SPACTA.md` 79行を守っています。単一実装・単一著者です
+- **参照アプリが小さい。** 10機能のうち4つはT1で、往復を一度もしません。往復を実証しているのは5機能です
+- **npmパッケージを配布していません。** 現状は `node verify/verify.mjs <projectRoot>` を直接実行します
+- **マイナー版で構造が変わります。** 共有 `Effect` union の解体（§2-1）はその例です。**1.0まではこの規模の破壊的変更が起きうると考えてください。** 移行内容はCHANGELOGに記載します
+- **中心命題がサンプル1つでしか測られていません。** 「1機能を追加・変更するのに必要な参照範囲は増えない」を、別ドメインのアプリで確かめる必要があります
+- **`SPACTA.md` だけを渡されたAIが別ドメインのアプリを作れるか**は未検証です
+- **分量の複雑性は減りません。** Spactaの膜が分離するのは振る舞いの複雑性だけです。JSXの行数、CSSのバリエーション、アニメーションの状態数は減りません。この区別も未実測です
 
 ---
 
-## 8. Next.jsの外へ — この思想はどこへ行くのか
+## 10. 設計の背景
 
-Spactaの考え方を他の言語・分野へ持ち出すとき、直感に反する非対称性があります: **「間違いが許されない分野」ほど価値が薄く、「検証文化がないのにAIが大量にコードを書く分野」ほど価値が濃い**のです。
+*（ここから先は背景です。使うだけなら読み飛ばして支障ありません。また、この2章の主張は見通しであり、§7〜§8のような実測の裏付けはありません。）*
 
-### 8.1 先客がいる場所（攻めない。学ぶ）
+### 10-1. 取引条件が変わった
 
-- **Java・銀行系**: ArchUnitが「アーキテクチャ境界をASTレベルで検査してビルドを落とす」ことを10年近くやっています（verifyのL1/L7相当）。イベントソーシングは「Actionログからの決定的リプレイ」そのもので、勘定系の監査要件から生まれました。
-- **車載・安全重要**: MISRA、ISO 26262、静的解析、形式証明。Spactaの構文的検査より何段も強い保証が既に義務化されています。
-- **Rust**: 最も示唆的な例です。**Rustコンパイラ自体が既に「verifyループ」として機能しています。** AIにRustを書かせると「borrow checkerが通るまで直す」という、Spactaの「グリーンになるまで直す」と完全に同型のループが自然発生します。AIとRustの相性が良いと言われる本当の理由はこれです。
+FCISもElmも以前から存在していましたが、主流にはなりませんでした。理由は**人間には冗長すぎて割に合わなかった**ためです。網羅的なswitch文、全分岐への明示的な型付け — 検証可能性の対価として人間が支払う記述コストが高すぎました。
 
-これらの分野は攻める場所ではなく、設計判断を輸入する場所です（イベントソーシングの監査設計、MISRAの検査項目の作り方など）。
+生成AIはこの条件を変えました。AIにとって反復的で明示的な構造は、生成コストがほぼゼロであり、かつ正確に再生産できる形式です。**記述コストが消えた結果、検証可能性だけが残ります。**
 
-### 8.2 この思想が効きそうな領域（相性の良い順）
+> **AI時代に、「書くコスト」と引き換えに「検証可能性」を買う取引の条件が変わった。その新しい条件で設計をやり直す。**
 
-以下は「作者がこの順で製品を出す」という計画ではなく、**Spactaの考え方がどこで最も価値を持ちそうか**という分析です。
+同時に、AIは新しい問題も持ち込みました。生成されたステートマシンが正しいかどうか、人間には即座に判断できないという問題です。Spactaは、AIが得意な明示的構造の量産を利用し、AIが保証できない遵守をverifyで塞ぐ、という2点を1つのループに組んだものです。**個々のパターンはすべて既存のものであり、Spactaの中身はこのループの設計です。**
 
-1. **AIエージェント / LLMオーケストレーション自体**: いまエージェントのコード — ツール呼び出し、リトライ、状態管理、プロンプト合成 — はアーキテクチャ規律のない新興分野です。エージェントの制御ロジックを純粋なステートマシン（`(state, event) → (nextState, toolCall)`）にし、LLM呼び出し・ツール実行を全部エッジに追い出せば、**エージェントの実行が全リプレイ可能になります**。「なぜあのときこのツールを呼んだのか」にログから決定的に答えられる。AIの監査可能性が社会的要請になりつつある今、このフライトレコーダー性はそれ自体が価値になります。しかも同じTypeScriptで表現できるため、SpactaのverifyがそのままAIループの検証器として応用できる領域でもあります。
-2. **レガシー移行（C++→Rust、COBOL→Java）の作業プロトコルとして**: 大規模移行の本質的難問は「複数のAIエージェントに並行して翻訳させたとき、正しさをどう機械判定するか」で、これはSpactaのアルファ評価（凍結契約に対する並行実装・衝突ゼロ統合）と同じ問題構造です。契約を凍結し、モジュール単位でAIに翻訳させ、境界violationと差分テスト（新旧実装に同じ入力を与えて出力比較 — 純粋関数なら自明にできる）でゲートする。ただし境界リントだけでは足りず、意味的等価性の検証まで必要になるため、ハードルは1.より高くなります。
-3. **モバイル（SwiftUI / Jetpack Compose）**: SwiftのTCA（The Composable Architecture）はほぼ「SwiftのElm」で、パターンは既に普及済み。欠けているのはverify相当の機械的強制とAIループの設計だけです。「パターンは既にあるが検証器がない」という状況なので、この思想が言語非依存であることを示す例としては最も分かりやすい領域です。
+### 10-2. 系譜はElmではなく構造化プログラミング
 
-### 8.3 言語ごとに作るのか、言語をまたぐのか
+Redux / Elm と同じパターンだという指摘は正しいです。異なるのは、境界が規約ではなく物理的に強制され機械的に検証される点だけです。
 
-Spactaを層に分解すると答えが見えます:
+ただし参照すべき系譜はElmではなく**構造化プログラミング**だと考えています。
 
-- **Law（L1〜L10の思想）** — 完全に言語非依存。「純粋コアの境界をデータだけが越える」は仕様として書ける
+Dijkstraの「goto有害論」の主張は、gotoを使うと制御フローが追跡不能になり、プログラムの正しさをローカルに推論できなくなる、というものでした。2013年のBookout対Toyota訴訟では、鑑定人がエンジン制御ソフトに約1万個のグローバル変数と多数のMISRA違反を指摘しました。判断の根拠になったのはバグの存在証明ではなく、**このコードは因果を推論できないと示されたこと自体**です。追跡不能性そのものが過失の証拠になりました。
+
+SpactaのL1/L2は、同じ主張をデータフローに適用したものです。「バグを無くすのではなく、バグを局所的・明示的・決定的にする」という定式化は、この系譜に位置づきます。
+
+ただし教訓もあります。構造化プログラミングがパラダイムシフトになったのは、規約集としてではなく**言語仕様に組み込まれたから**です。この基準で見ると、SpactaはNext.jsの上に載せた規約とリンタです。パラダイムシフトになるには、この制約がフレームワーク層・言語層に採用される必要があります。
+
+---
+
+## 11. Next.jsの外へ
+
+Spactaの考え方を他の言語・分野へ持ち出す場合、**「間違いが許されない分野」ほど価値が薄く、「検証文化がないのにAIが大量にコードを書く分野」ほど価値が濃い**という非対称性があります。
+
+### 11-1. 先行例がある領域
+
+- **Java・銀行系**: ArchUnitが「アーキテクチャ境界をASTレベルで検査してビルドを落とす」ことを10年近く行っています（L1/L7相当）。イベントソーシングは「Actionログからの決定的リプレイ」そのもので、勘定系の監査要件から生まれました
+- **車載・安全重要**: MISRA、ISO 26262、静的解析、形式証明。Spactaの構文的検査より強い保証が既に義務化されています
+- **Rust**: **Rustコンパイラ自体が既にverifyループとして機能しています。** AIにRustを書かせると「borrow checkerが通るまで直す」という、Spactaの「緑になるまで直す」と同型のループが自然に発生します。AIとRustの相性が良いとされる理由はこれだと考えています
+
+これらは設計判断を輸入する対象です。
+
+### 11-2. 適用できそうな領域
+
+1. **AIエージェント / LLMオーケストレーション。** エージェントのコード — ツール呼び出し、リトライ、状態管理、プロンプト合成 — はアーキテクチャ規律のない新興分野です。制御ロジックを純粋なステートマシン（`(state, event) → (nextState, toolCall)`）にし、LLM呼び出しとツール実行をエッジに追い出せば、**エージェントの実行がリプレイ可能になります。** 「なぜあのときこのツールを呼んだのか」にログから決定的に答えられます
+2. **レガシー移行（C++→Rust、COBOL→Java）の作業プロトコル。** 難点は「複数のAIエージェントに並行翻訳させたとき、正しさをどう機械判定するか」で、Spactaの初期評価（凍結契約への並行実装）と同じ問題構造です。ただし境界リントだけでは足りず、意味的等価性の検証まで必要になるため、1.よりハードルが高くなります
+3. **モバイル（SwiftUI / Jetpack Compose）。** SwiftのTCAはパターンとして普及済みで、欠けているのはverify相当の機械的強制とAIループの設計です
+
+### 11-3. 言語ごとに作るのか、言語をまたぐのか
+
+Spactaを層に分解すると次のようになります。
+
+- **Law（L1〜L10）** — 言語非依存。仕様として書ける
 - **Verifier** — 言語ごとに必要（ASTは言語固有）
 - **Form（ディレクトリ構成・フレームワーク対応付け）** — フレームワークごとに必要
 
-これは**LSP（Language Server Protocol）と同じ構造**です。LSPは「プロトコルは一つ、サーバーは言語ごと」で全言語に広がりました。Spactaの一般化も同じ道が考えられます: Lawを言語中立な仕様書（Spacta Spec）として切り出せば、verifierは各言語コミュニティがプラグインとして実装できます。言語中立な仕様と1つの参照実装（TypeScript版）さえあれば、あとは言語ごとの移植に開いていける、ということです。
+これは **LSP（Language Server Protocol）と同じ構造**です。LSPは「プロトコルは一つ、サーバーは言語ごと」で全言語に広がりました。Lawを言語中立な仕様として切り出せば、verifierは各言語コミュニティがプラグインとして実装できます。
 
-もう一つの定式化として、HaskellやKokaのような効果システムを持つ言語では、L2は型システムが無料で強制します。つまり**verifierの正体は「主流言語に欠けている効果システムとモジュール境界を、リントで後付けするシム」**です。この見方は、将来より低いレイヤー（言語設計・型システムの側）へ降りるときの指針になります。
-
-### 8.4 この思想が育つとしたら、どんな順序か
-
-これは確定した開発計画ではなく、思想として自然な発展の順序です。
-
-1. まずNext.js版（v0.9）を実際に動くものとして固める — 何を言うにも、動く実証が前提になる
-2. Lawを言語中立の1枚仕様「Spacta Spec」として書き出す — 思想の本体を、特定のフレームワークから切り離して移植可能な形にする
-3. 二つ目の実例として、AIエージェントオーケストレーション版が有力 — 同じTypeScriptで書け、追い風が最も強く、リプレイ可能性（フライトレコーダー性）という分かりやすい価値がある
-4. 移行ツールや他言語への展開は、その先の話 — ここは一人で抱えるより、コミュニティに開いていく領域
+別の見方として、HaskellやKokaのような効果システムを持つ言語では、L2は型システムが強制します。つまり**verifierは、主流言語に欠けている効果システムとモジュール境界を、リントで後付けするシムです。**
 
 ---
 
 ## 次のステップ
 
-* 新しいプロジェクトをセットアップするには、[docs_HUMAN-ONLY/setup.md](../setup.md) に従ってください。
-* Spactaのアルファ評価に関する詳細な設計ログについては、[docs_HUMAN-ONLY/spacta-alpha-evaluation.md](../spacta-alpha-evaluation.md) を参照してください。
+* **セットアップ：** [setup.md](../setup.md)
+* **AI向け実行ルール（79行）：** [`SPACTA.md`](../../SPACTA.md)
+* **決着した設計判断と、それを守っている検査：** [`spacta-decisions.md`](../../spacta-decisions.md)
+* **決着していないこと：** [`spacta-open-questions.md`](../../spacta-open-questions.md)
+* **設計メモ（Attention・認知負荷まわり）：** [α評価](spacta-alpha-evaluation.md)
+
+実行方法（npmパッケージは未配布のため直接実行します）：
+
+```sh
+node verify/verify.mjs <projectRoot>          # 境界のみ
+node verify/verify.mjs <projectRoot> --tsc    # 境界のあとに型
+node metrics/measure.mjs <projectRoot>        # 共有シンボルの利用範囲を測る
+node garden/garden.mjs <projectRoot>          # 片付け指示書（JSON）を出す
+```
+
+bunでも動作します（`bun verify/verify.mjs <projectRoot>`）。`src/` か `app/` を含むディレクトリを指定してください。それ以外を指すと0件走査になり、緑を名乗らず終了コード2を返します。
+
+**有用なフィードバックは、「ここが分かりにくい」と「この主張はverifyが実際には確かめていないのでは」の2つです。**
