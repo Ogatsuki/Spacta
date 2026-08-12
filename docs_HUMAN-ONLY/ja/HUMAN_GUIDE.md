@@ -8,6 +8,8 @@ Spactaは機能ごとに、**計算だけをする層（Core）と、外界に�
 
 > **膜を越えるのはデータだけ。IOは入らず、計算は出ない。**
 
+*この文章はAIで書いたものです。私が書いた説明はこちらにあります。[HUMAN_GUIDE_human-write.md](HUMAN_GUIDE_human-write.md)*
+
 ---
 
 ## この文書の読み方

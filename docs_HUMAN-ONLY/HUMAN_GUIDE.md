@@ -8,6 +8,8 @@ Spacta physically separates, per feature, **a layer that only computes (Core) fr
 
 > **Only data crosses the membrane. No IO goes in, no computation comes out.**
 
+*This document was written by AI. there is a file I wrote.[HUMAN_GUIDE_human-write.md](HUMAN_GUIDE_human-write.md)*
+
 ---
 
 ## How to read this document
