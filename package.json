@@ -61,7 +61,8 @@
   "bin": {
     "spacta-verify": "verify/verify.mjs",
     "spacta-measure": "metrics/measure.mjs",
-    "spacta-garden": "garden/garden.mjs"
+    "spacta-garden": "garden/garden.mjs",
+    "spacta-init": "tools/init.mjs"
   },
   "//files-replay": [
     "Named one by one rather than shipping `replay/` whole, and the line between them is the",
@@ -81,6 +82,10 @@
     "replay/drivers.mjs",
     "garden",
     "metrics/measure.mjs",
+    "skills",
+    "hooks",
+    "tools/init.mjs",
+    ".claude-plugin",
     "SPACTA.md",
     "spacta-decisions.md",
     "spacta-open-questions.md",

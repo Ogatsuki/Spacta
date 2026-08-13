@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "spacta",
+  "description": "Spacta — pure-boundary architecture, enforced rather than remembered",
+  "owner": {
+    "name": "Ogatsuki",
+    "url": "https://github.com/Ogatsuki/Spacta"
+  },
+  "plugins": [
+    {
+      "name": "spacta",
+      "source": "./",
+      "description": "The Spacta skill (the ten Laws, where each kind of code goes, how to close a write's round trip, how to check behaviour) and a Stop hook that holds a turn which changed governed source and left `verify` red. Pairs with the `spacta` npm package, which carries the engine and the verifier the hook runs.",
+      "category": "development",
+      "version": "0.11.0"
+    }
+  ]
+}

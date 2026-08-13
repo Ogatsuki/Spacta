@@ -219,9 +219,22 @@ check(garden.code === 0, "spacta-garden runs to completion", garden.err || garde
 // ───────────────────────── 5. what must NOT have shipped ──────────────────────────────────
 // Shipping these would be shipping tools that cannot run where they land: their scenarios reach
 // the reference application by relative path.
+console.log("\nthe agent-facing half:");
+check(existsSync(join(pkgDir, "skills", "spacta", "SKILL.md")), "the skill shipped");
+check(existsSync(join(pkgDir, "hooks", "verify-on-stop.mjs")), "the Stop hook shipped");
+check(existsSync(join(pkgDir, ".claude-plugin", "plugin.json")), "the plugin manifest shipped");
+
+const init = run(process.execPath, [join(pkgDir, "tools", "init.mjs"), consumer, "--dry-run"]);
+check(init.code === 0 && /would write .*skills\/spacta/.test(init.out), "spacta-init resolves its payload", init.err || init.out);
+
 console.log("\nwhat must not have shipped:");
-for (const absent of ["tools", "docs_HUMAN-ONLY", "node_modules"]) {
+for (const absent of ["docs_HUMAN-ONLY", "node_modules"]) {
   check(!existsSync(join(pkgDir, absent)), `${absent}/ is absent from the package`);
+}
+// `tools/` ships one file. `mutate.mjs` reaches the reference app by relative path and
+// `vendor-sync.mjs` writes into a sibling checkout — neither can run where this lands.
+for (const absent of ["mutate.mjs", "vendor-sync.mjs", "smoke-package.mjs"]) {
+  check(!existsSync(join(pkgDir, "tools", absent)), `tools/${absent} is absent — it is repo-internal`);
 }
 // The line inside `replay/`: the harness ships, the scenarios do not. If these ever appear in a
 // tarball, the package is carrying imports that reach a directory the adopter does not have.

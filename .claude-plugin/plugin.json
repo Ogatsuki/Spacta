@@ -1,0 +1,12 @@
+{
+  "name": "spacta",
+  "description": "Pure-boundary architecture, enforced rather than remembered. Adds the Spacta skill (the ten Laws, where logic goes, how to check behaviour) and a Stop hook that holds a turn which left `verify` red.",
+  "version": "0.11.0",
+  "author": {
+    "name": "Ogatsuki"
+  },
+  "homepage": "https://github.com/Ogatsuki/Spacta",
+  "repository": "https://github.com/Ogatsuki/Spacta",
+  "license": "MIT",
+  "keywords": ["architecture", "verification", "purity", "effects", "nextjs", "react"]
+}

@@ -80,6 +80,40 @@ What is still **not** published is `tools/mutate.mjs` and the scenario files the
 drive the reference application by relative path, so they measure *these* gates rather than
 yours.
 
+### For the agent doing the work
+
+Spacta is mostly read by AI, so its instructions and its enforcement install into the harness
+rather than into a README nobody re-reads.
+
+```sh
+npx spacta-init                    # -> .claude/skills/spacta/ and .claude/hooks/
+```
+
+or, tracking the plugin's own releases instead of the installed package version:
+
+```
+/plugin marketplace add Ogatsuki/Spacta
+/plugin install spacta@spacta
+```
+
+Two things arrive:
+
+- **A skill.** Only its description sits in context; the body loads when it is relevant, and the
+  reference files load only when the body sends you to them. It covers the Laws, where each kind
+  of code goes, and — the part no tool checks — how to write behavioural scenarios.
+- **A Stop hook.** `SPACTA.md` §4-5 says "run `verify` yourself and fix all errors until green".
+  By Spacta's own trust hierarchy that sentence is *Advice*: an agent that remembers it runs the
+  verifier. The hook makes a turn unable to end on a red one.
+
+  It stays silent unless a `.ts`/`.tsx` file under `src/` or the app router is actually dirty,
+  caches what it last saw green, blocks **at most once per turn** so a session can never be
+  trapped, and exits quietly if it cannot find a verifier. It runs `npm run typecheck` too, when
+  the project has that script.
+
+**The hook is not a Law**, and it is worth being exact about why: it binds sessions in this
+harness with this hook installed, and nothing else. Human commits and other agents pass straight
+through. The Law is CI. This is the same check moved to where fixing it costs one edit.
+
 ### Working in this repository
 
 ```sh
