@@ -67,6 +67,7 @@
     "dist",
     "verify",
     "starter",
+    "!starter/garden-report.json",
     "garden",
     "metrics/measure.mjs",
     "SPACTA.md",
@@ -98,6 +99,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
+    "//ci": "What CI runs that needs nothing beside this repository. The behavioural gates are not here: they read the reference application, so they live in `replay` and `mutate` and run only where a checkout of it exists.",
+    "ci": "npm run build && npm run verify && npm run measure && npm run garden && node tools/vendor-sync.mjs --check && node tools/smoke-package.mjs",
+    "smoke": "node tools/smoke-package.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run verify:starter",
     "verify": "node verify/verify.mjs starter",

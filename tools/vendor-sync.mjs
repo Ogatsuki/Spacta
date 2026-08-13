@@ -42,15 +42,15 @@ const BUNDLES = [
     files: ["runtime.ts", "react.ts"],
     sites: [
       { name: "starter", dir: join(repo, "starter", "src", "shared", "spacta") },
-      { name: "livingdoc", dir: join(livingdoc, "src", "shared", "spacta") },
-      { name: "livingdoc/verify corpus", dir: join(livingdoc, "verify", "starter", "src", "shared", "spacta") },
+      { name: "livingdoc", dir: join(livingdoc, "src", "shared", "spacta"), root: livingdoc },
+      { name: "livingdoc/verify corpus", dir: join(livingdoc, "verify", "starter", "src", "shared", "spacta"), root: livingdoc },
     ],
   },
   {
     name: "verifier",
     from: join(repo, "verify"),
     tree: true,
-    sites: [{ name: "livingdoc/verify", dir: join(livingdoc, "verify") }],
+    sites: [{ name: "livingdoc/verify", dir: join(livingdoc, "verify"), root: livingdoc }],
   },
   {
     // The corpus the bundled verifier's wiring test needs. `starter/` is the reference corpus
@@ -59,12 +59,20 @@ const BUNDLES = [
     name: "corpus",
     from: join(repo, "starter"),
     tree: true,
-    sites: [{ name: "livingdoc/verify/starter", dir: join(livingdoc, "verify", "starter") }],
+    sites: [{ name: "livingdoc/verify/starter", dir: join(livingdoc, "verify", "starter"), root: livingdoc }],
   },
 ];
 
-/** Everything under `dir`, as paths relative to it. Skips the noise no copy should carry. */
-const SKIP = new Set(["node_modules", ".next", ".git", "dist"]);
+/**
+ * Everything under `dir`, as paths relative to it. Skips the noise no copy should carry.
+ *
+ * `garden-report.json` is on the list because it is *written into the corpus* by `garden`, and
+ * a generated file inside a vendored tree makes the staleness check depend on what was run last:
+ * run `garden` and the corpus is suddenly one file out of date. That is a false red, and a false
+ * red on the only staleness alarm there is costs more than the file is worth. It is gitignored
+ * for the same reason and excluded from the published package by `files`.
+ */
+const SKIP = new Set(["node_modules", ".next", ".git", "dist", "garden-report.json"]);
 function treeOf(dir, base = dir) {
   if (!existsSync(dir)) return [];
   const out = [];
@@ -80,10 +88,24 @@ function treeOf(dir, base = dir) {
 const checkOnly = process.argv.includes("--check");
 let stale = 0;
 let written = 0;
+let absent = 0;
 
 for (const bundle of BUNDLES) {
   const files = bundle.tree ? treeOf(bundle.from) : bundle.files;
   for (const site of bundle.sites) {
+    // A site whose repository is not checked out here is *absent*, which is not the same thing
+    // as stale. CI for this repository has no `../livingdoc` beside it, and reporting every one
+    // of its files as out of date would turn the only staleness alarm there is into noise that
+    // is always on — the fastest way to teach everyone to ignore it.
+    //
+    // Absent is printed, counted, and repeated in the summary. A skip nobody is told about is
+    // the failure this whole script exists to stop, and it would be a poor trade to fix it for
+    // the engine and reintroduce it here.
+    if (site.root && !existsSync(site.root)) {
+      absent += 1;
+      console.log(`  -- ${bundle.name.padEnd(9)} ${site.name.padEnd(24)} not checked out here, skipped`);
+      continue;
+    }
     let siteStale = 0;
     for (const file of files) {
       const source = readFileSync(join(bundle.from, file));
@@ -107,17 +129,20 @@ for (const bundle of BUNDLES) {
   }
 }
 
+/** What was not looked at, said out loud, so a green is never read as covering more than it did. */
+const skipped = absent === 0 ? "" : ` (${absent} site(s) not checked out here — nothing was compared for them)`;
+
 if (checkOnly) {
   console.log(
     stale === 0
-      ? "\nvendor: every copy matches its source"
-      : `\nvendor: ${stale} file(s) stale - run \`bun tools/vendor-sync.mjs\``,
+      ? `\nvendor: every copy present here matches its source${skipped}`
+      : `\nvendor: ${stale} file(s) stale - run \`bun tools/vendor-sync.mjs\`${skipped}`,
   );
   process.exit(stale === 0 ? 0 : 1);
 }
 
 console.log(
   written === 0
-    ? "\nvendor: nothing to do, every copy already matches its source"
-    : `\nvendor: ${written} file(s) written`,
+    ? `\nvendor: nothing to do, every copy present here already matches its source${skipped}`
+    : `\nvendor: ${written} file(s) written${skipped}`,
 );

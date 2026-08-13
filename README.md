@@ -55,11 +55,20 @@ says nothing about behaviour, and this package does not yet ship a way to check 
 ### Working in this repository
 
 ```sh
+npm run ci         # everything CI runs that needs nothing beside this repo
 npm run build      # engine/*.ts -> dist/ (also runs on prepack)
 npm run verify     # the verifier against the reference corpus, starter/
+npm run smoke      # pack, install into a scratch project, and use the result
 npm run replay     # the behavioural gates (needs ../livingdoc beside this repo)
 npm run vendor:check
 ```
+
+`.github/workflows/ci.yml` runs the first group on Node 18/20/22, plus the generic replay
+self-test and the packaged-artifact smoke test. The behavioural gates — cross-check, runtime
+serialization, mutate — read the reference application from another repository, so they run only
+when a `LIVINGDOC_TOKEN` secret is present. **When it is not, the job writes what it did not
+check into the run summary rather than passing quietly**: structure being green says nothing
+about behaviour, and a CI badge that implies otherwise is worse than no badge.
 
 ---
 
