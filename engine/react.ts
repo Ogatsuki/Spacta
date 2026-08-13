@@ -14,8 +14,13 @@
  */
 "use client";
 import { useState, useSyncExternalStore } from "react";
-import { createRuntime } from "./runtime";
-import type { EffectSource, Perform, Recorder, Runtime, Update } from "./runtime";
+// The `.js` extension is deliberate and is not a mistake about the file's name. TypeScript
+// resolves it to `runtime.ts` under every moduleResolution mode, and it is what the emitted
+// ESM needs in order to be resolvable by Node without a bundler rewriting it. Dropping it
+// would make this file compile everywhere and load only where a bundler is present — which is
+// the opposite of what `engine-portability` claims about this directory.
+import { createRuntime } from "./runtime.js";
+import type { EffectSource, Perform, Recorder, Runtime, Update } from "./runtime.js";
 
 /**
  * The non-determinism a Shell is allowed to hand to Core, minted fresh for one dispatch.

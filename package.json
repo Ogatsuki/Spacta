@@ -2,18 +2,117 @@
   "name": "spacta",
   "version": "0.11.0",
   "description": "Spacta — Pure-boundary architecture physically enforced by AST static verification",
-  "private": true,
+  "keywords": [
+    "architecture",
+    "verification",
+    "ast",
+    "purity",
+    "effects",
+    "state-machine",
+    "nextjs",
+    "react"
+  ],
+  "homepage": "https://github.com/Ogatsuki/Spacta#readme",
+  "bugs": "https://github.com/Ogatsuki/Spacta/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ogatsuki/Spacta.git"
+  },
+  "license": "MIT",
+  "author": "Ogatsuki",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "//exports": [
+    "Two entry points, because the engine is two things and only one of them knows what React is.",
+    "`spacta/runtime` names no UI framework — that is the property `engine-portability` checks,",
+    "and shipping it as its own entry point is what makes the claim usable rather than merely",
+    "true. `spacta/react` is the binding adapter. An adopter on another view layer imports the",
+    "first and writes their own second.",
+    "The `.ts` source ships alongside `dist/` and is what `vendor-sync` still pushes into the",
+    "reference corpus; consumers get the compiled copy so nothing has to be transpiled out of",
+    "node_modules."
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "//bin": [
+    "Three tools ship, and one deliberately does not. `verify`, `measure` and `garden` each take",
+    "a target path and read nothing but that target and this package — they work on anybody's",
+    "app. `tools/mutate.mjs` drives `replay/`, whose scenarios import the reference application",
+    "by relative path, so it measures this repository's gates and not an adopter's. Shipping it",
+    "would be shipping a tool that cannot run where it lands."
+  ],
+  "bin": {
+    "spacta-verify": "verify/verify.mjs",
+    "spacta-measure": "metrics/measure.mjs",
+    "spacta-garden": "garden/garden.mjs"
+  },
+  "files": [
+    "engine",
+    "dist",
+    "verify",
+    "starter",
+    "garden",
+    "metrics/measure.mjs",
+    "SPACTA.md",
+    "spacta-decisions.md",
+    "spacta-open-questions.md",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENCE"
+  ],
+  "//peerDependencies": [
+    "Both are optional, and for different reasons. `react` is needed only by `spacta/react`;",
+    "an adopter using the engine alone never resolves it. `typescript` is needed only by the",
+    "CLIs, which parse the target's AST — `verify.mjs` resolves it from the target project",
+    "first and from this package second, so a normal TypeScript app already satisfies it and",
+    "declaring it a hard dependency would put a compiler in every consumer's production tree."
+  ],
+  "peerDependencies": {
+    "react": ">=18",
+    "typescript": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run verify:starter",
     "verify": "node verify/verify.mjs starter",
     "verify:starter": "node verify/verify.mjs starter",
     "garden": "node garden/garden.mjs starter",
     "measure": "node metrics/measure.mjs starter",
     "measure:starter": "node metrics/measure.mjs starter",
     "measure:livingdoc": "node metrics/measure.mjs ../livingdoc",
+    "mutate": "node tools/mutate.mjs ../livingdoc",
+    "replay": "node replay/crosscheck.mjs && node replay/runtime.serialization.test.mjs",
     "vendor:sync": "node tools/vendor-sync.mjs",
     "vendor:check": "node tools/vendor-sync.mjs --check"
   },
   "devDependencies": {
+    "@types/react": "^19",
     "typescript": "^5"
   }
 }

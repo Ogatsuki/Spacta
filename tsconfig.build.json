@@ -1,0 +1,29 @@
+{
+  // The only build in this repository, and it builds one thing: the engine.
+  //
+  // Everything else Spacta ships — the verifier, the corpus, the measuring tools — is either
+  // plain `.mjs` that Node runs as-is or TypeScript that is read rather than executed. The
+  // engine is the exception because it is the one piece that gets *imported by an application*,
+  // and an application should not have to arrange for TypeScript from `node_modules` to be
+  // transpiled before it can use it.
+  //
+  // The `.ts` source ships too (see `files` in package.json). It is the readable copy, and it
+  // is what `vendor-sync` still pushes into the reference corpus — `dist/` is for consumers,
+  // never for this repository's own gates.
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "engine",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["engine/**/*.ts"]
+}
