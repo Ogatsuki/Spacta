@@ -48,6 +48,7 @@
       "types": "./dist/react.d.ts",
       "default": "./dist/react.js"
     },
+    "./replay": "./replay/index.mjs",
     "./package.json": "./package.json"
   },
   "//bin": [
@@ -62,12 +63,22 @@
     "spacta-measure": "metrics/measure.mjs",
     "spacta-garden": "garden/garden.mjs"
   },
+  "//files-replay": [
+    "Named one by one rather than shipping `replay/` whole, and the line between them is the",
+    "point. These four name no application. The ones left behind — scenarios.mjs, crosscheck.mjs",
+    "and the two test files — import the reference app by relative path, so publishing them would",
+    "be publishing code that cannot run where it lands."
+  ],
   "files": [
     "engine",
     "dist",
     "verify",
     "starter",
     "!starter/garden-report.json",
+    "replay/index.mjs",
+    "replay/runner.mjs",
+    "replay/harness.mjs",
+    "replay/drivers.mjs",
     "garden",
     "metrics/measure.mjs",
     "SPACTA.md",
@@ -111,7 +122,8 @@
     "measure:starter": "node metrics/measure.mjs starter",
     "measure:livingdoc": "node metrics/measure.mjs ../livingdoc",
     "mutate": "node tools/mutate.mjs ../livingdoc",
-    "replay": "node replay/crosscheck.mjs && node replay/runtime.serialization.test.mjs",
+    "//replay": "Needs a TypeScript-capable runtime (bun, deno, or node with type stripping): the scenarios import the reference app's core.ts directly. It also needs the engine built, because the harness drives dist/ rather than a copy of the source.",
+    "replay": "npm run build && node replay/crosscheck.mjs && node replay/runtime.serialization.test.mjs && node replay/harness.selftest.mjs",
     "vendor:sync": "node tools/vendor-sync.mjs",
     "vendor:check": "node tools/vendor-sync.mjs --check"
   },

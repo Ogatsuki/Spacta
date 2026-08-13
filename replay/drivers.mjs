@@ -19,7 +19,14 @@
  * too — a second copy of the old loop could drift from the first and the before/after evidence
  * would quietly stop being about the same thing.
  */
-import { createRecorder, createRuntime } from "../starter/src/shared/spacta/runtime.ts";
+// The built engine — the same bytes an adopter installs, not a copy of the source that happens
+// to be nearby. It used to be `../starter/src/shared/spacta/runtime.ts`, the vendored corpus
+// copy, which was fine while these files never left the repository. Now that the harness ships,
+// the engine it drives has to be the one in the package; `runtime.serialization.test.mjs` still
+// asserts every vendored copy is byte-identical to `engine/`, so nothing stopped being covered.
+//
+// Requires `npm run build`. The npm scripts that reach this file run it first.
+import { createRecorder, createRuntime } from "../dist/runtime.js";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 

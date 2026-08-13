@@ -47,10 +47,38 @@ project. All three are plain ESM over Node built-ins and run under `node` or `bu
 internally they re-spawn with `process.execPath`, so whichever runtime starts them is the one
 they keep using.
 
-Two tools in this repository are **not** published, and the reason is worth knowing:
-`tools/mutate.mjs` and `replay/` drive the reference application by relative path, so they
-measure *these* gates rather than yours. A green `spacta-verify` says your structure holds; it
-says nothing about behaviour, and this package does not yet ship a way to check that.
+### The behavioural gate
+
+`spacta-verify` reads structure, and it prints on every run that it never checks semantic
+correctness. `spacta/replay` is what closes some of that gap:
+
+```js
+import { runCrossCheck } from "spacta/replay";
+import * as cart from "../src/features/cart/core.ts";
+
+const { failed } = await runCrossCheck({
+  sessionDir: "replay-sessions",
+  scenarios: [{
+    id: "S1", title: "add to cart, server rejects it", aims: "(2)", drivers: ["engine"],
+    features: () => ({ cart: { init: cart.init, update: cart.update, initData: SEED } }),
+    async script(d, io) {
+      d.cart.dispatch({ type: "ADD", sku: "x", correlationId: "c1" });
+      await io.settleAll({ outcome: () => ({ fail: "Request failed (500)" }) });
+    },
+  }],
+});
+process.exit(failed === 0 ? 0 : 1);
+```
+
+It drives your real `core.ts` through the real engine, records the Actions, reads the recording
+back off disk, folds `update` over it, and compares **every intermediate state**. You write the
+scenarios; the loop is not yours to write. Note the honest limit: a cross-check compares a run
+against its own replay, so **a feature that is wrong but deterministic passes**. Catching a wrong
+answer means asserting the answer, separately.
+
+What is still **not** published is `tools/mutate.mjs` and the scenario files themselves — they
+drive the reference application by relative path, so they measure *these* gates rather than
+yours.
 
 ### Working in this repository
 

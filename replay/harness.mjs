@@ -281,7 +281,7 @@ export const NOT_CHECKED = [
   "    and re-render timing are outside what these runs exercise.",
 ];
 
-export function printNotChecked() {
-  console.log("\nWhat this cross-check does NOT verify:");
-  for (const line of NOT_CHECKED) console.log(`  ${line}`);
+export function printNotChecked(log = console.log) {
+  log("\nWhat this cross-check does NOT verify:");
+  for (const line of NOT_CHECKED) log(`  ${line}`);
 }

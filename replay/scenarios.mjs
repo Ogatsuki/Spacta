@@ -10,7 +10,6 @@
  *
  * The `update` under test in every one of these is livingdoc's own `core.ts`, unmodified.
  */
-import { createIO, DRIVERS } from "./drivers.mjs";
 
 import * as pageview from "../../livingdoc/src/features/pageview/core.ts";
 import * as materialrequest from "../../livingdoc/src/features/materialrequest/core.ts";
@@ -421,29 +420,7 @@ export const SCENARIOS = [
 
 // ───────────────────────── running one ─────────────────────────
 
-/**
- * Perform the live run of a scenario against one driver, and hand back what the cross-check
- * needs: per feature, the session that was recorded and the states the run actually held.
- */
-export async function runScenario(scenario, driverName) {
-  const io = createIO();
-  const built = scenario.features();
-  const drivers = {};
-  for (const [name, parts] of Object.entries(built)) {
-    drivers[name] = DRIVERS[driverName]({ ...parts, perform: io.perform });
-  }
-
-  await scenario.script(drivers, io);
-  await io.quiet();
-
-  const results = {};
-  for (const [name, parts] of Object.entries(built)) {
-    results[name] = {
-      init: parts.init,
-      update: parts.update,
-      session: drivers[name].session(),
-      live: drivers[name].live(),
-    };
-  }
-  return { io, results };
-}
+// `runScenario` used to live here, which put a generic loop in the one file that is entirely
+// about this application. It is `spacta/replay`'s now; re-exported so existing importers of
+// this module keep working.
+export { runScenario } from "./runner.mjs";

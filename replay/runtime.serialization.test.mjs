@@ -21,7 +21,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createRecorder, createRuntime } from "../starter/src/shared/spacta/runtime.ts";
+// The built engine, for the same reason `drivers.mjs` uses it: these assertions are about the
+// engine that ships. The "source and its copies" section below still reads `engine/runtime.ts`
+// and every vendored copy directly, so byte-identity remains checked against the source.
+import { createRecorder, createRuntime } from "../dist/runtime.js";
 import * as moderation from "../../livingdoc/src/features/moderation/core.ts";
 import * as saved from "../../livingdoc/src/features/saved/core.ts";
 import * as pageview from "../../livingdoc/src/features/pageview/core.ts";

@@ -147,6 +147,51 @@ check(engineRun.code === 0, "a write round trip completes through the installed 
 check(existsSync(join(pkgDir, "dist", "runtime.d.ts")), "type declarations shipped");
 check(existsSync(join(pkgDir, "engine", "runtime.ts")), "the readable .ts source shipped beside dist/");
 
+// ───────────────────────── 3b. the behavioural gate ───────────────────────────────────────
+// `spacta/replay` is the half of the harness that names no application. This drives a whole
+// cross-check out of the installed package — live run, recording, replay, comparison — using a
+// feature defined right here, which is exactly the shape an adopter's own scenario file takes.
+console.log("\nthe replay harness, out of node_modules:");
+
+const replayCheck = `
+import { runCrossCheck } from "spacta/replay";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const core = {
+  init: (d) => ({ n: d.start, pending: [] }),
+  update: (s, a) => {
+    if (a.type === "ADD") return [{ ...s, n: s.n + 1, pending: [a.correlationId] }, [{ type: "SAVE", correlationId: a.correlationId }]];
+    if (a.type === "EFFECT_SUCCEEDED") return [{ ...s, pending: [] }, []];
+    if (a.type === "EFFECT_FAILED") return [{ ...s, n: s.n - 1, pending: [], notice: a.message }, []];
+    throw new Error("unhandled " + a.type);
+  },
+};
+
+const { failed, rows } = await runCrossCheck({
+  sessionDir: mkdtempSync(join(tmpdir(), "spacta-smoke-sessions-")),
+  log: () => {},
+  scenarios: [
+    {
+      id: "S1", title: "an optimistic add the server rejects", aims: "(2)", drivers: ["engine"],
+      features: () => ({ cart: { init: core.init, update: core.update, initData: { start: 0 } } }),
+      async script(d, io) {
+        d.cart.dispatch({ type: "ADD", correlationId: "c1" });
+        await io.settleAll({ outcome: () => ({ fail: "Request failed (500)" }) });
+      },
+    },
+  ],
+});
+
+if (failed !== 0) { console.error("the cross-check reported " + failed + " unmet expectation(s)"); process.exit(1); }
+if (rows.length !== 1) { console.error("expected 1 checked run, got " + rows.length); process.exit(1); }
+if (rows[0].outcome !== "pass") { console.error("the run did not replay"); process.exit(1); }
+`;
+writeFileSync(join(consumer, "replay-check.mjs"), replayCheck);
+const replayRun = run(process.execPath, ["replay-check.mjs"], { cwd: consumer });
+check(replayRun.code === 0, "a full cross-check runs through the installed harness", replayRun.err || replayRun.out);
+
 // ───────────────────────── 4. the CLIs, against a real tree ───────────────────────────────
 // The target is this repository's own `starter/`, which the installed package has never seen.
 console.log("\nthe CLIs, run from the installed package:");
@@ -178,6 +223,12 @@ console.log("\nwhat must not have shipped:");
 for (const absent of ["tools", "docs_HUMAN-ONLY", "node_modules"]) {
   check(!existsSync(join(pkgDir, absent)), `${absent}/ is absent from the package`);
 }
+// The line inside `replay/`: the harness ships, the scenarios do not. If these ever appear in a
+// tarball, the package is carrying imports that reach a directory the adopter does not have.
+for (const absent of ["scenarios.mjs", "crosscheck.mjs", "runtime.serialization.test.mjs"]) {
+  check(!existsSync(join(pkgDir, "replay", absent)), `replay/${absent} is absent — it names the reference app`);
+}
+check(existsSync(join(pkgDir, "replay", "runner.mjs")), "replay/runner.mjs is present — the generic half did ship");
 
 if (!KEEP) rmSync(work, { recursive: true, force: true });
 else console.log(`\n  kept: ${work}`);
