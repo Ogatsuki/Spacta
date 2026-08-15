@@ -2,10 +2,19 @@
   "name": "spacta-starter",
   "version": "0.11.0",
   "private": true,
+  "//scripts": [
+    "The CLIs come out of node_modules, not out of a copied verify/ directory. That is the whole",
+    "difference between this and the version before it: the verifier a project runs is the one",
+    "that shipped with the engine it imports, so the two cannot drift apart at the version level."
+  ],
   "scripts": {
-    "verify": "node verify/verify.mjs .",
-    "verify:tsc": "node verify/verify.mjs . --tsc",
-    "garden": "node garden/garden.mjs ."
+    "verify": "spacta-verify .",
+    "verify:tsc": "spacta-verify . --tsc",
+    "garden": "spacta-garden .",
+    "measure": "spacta-measure ."
+  },
+  "dependencies": {
+    "spacta": "^0.11.0"
   },
   "devDependencies": {
     "typescript": "^5",

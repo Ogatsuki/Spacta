@@ -31,9 +31,9 @@
     "and shipping it as its own entry point is what makes the claim usable rather than merely",
     "true. `spacta/react` is the binding adapter. An adopter on another view layer imports the",
     "first and writes their own second.",
-    "The `.ts` source ships alongside `dist/` and is what `vendor-sync` still pushes into the",
-    "reference corpus; consumers get the compiled copy so nothing has to be transpiled out of",
-    "node_modules."
+    "The `.ts` source ships alongside `dist/` as the readable half — it is what an adopter opens",
+    "and what `engine-portability` walks; consumers get the compiled copy so nothing has to be",
+    "transpiled out of node_modules."
   ],
   "exports": {
     ".": {
@@ -70,6 +70,12 @@
     "and the two test files — import the reference app by relative path, so publishing them would",
     "be publishing code that cannot run where it lands."
   ],
+  "//files-docs": [
+    "`docs_AI-ONLY/SPACTA.md` ships because SKILL.md sends the agent to it by that exact path.",
+    "`spacta-decisions.md` and `spacta-open-questions.md` do not: they are the working record of",
+    "the people building Spacta, no installed file links to them, and shipping documents nothing",
+    "can reach only makes the tarball look like it holds two rulebooks."
+  ],
   "files": [
     "engine",
     "dist",
@@ -87,8 +93,6 @@
     "tools/init.mjs",
     ".claude-plugin",
     "docs_AI-ONLY/SPACTA.md",
-    "docs_AI-ONLY/spacta-decisions.md",
-    "docs_AI-ONLY/spacta-open-questions.md",
     "CHANGELOG.md",
     "README.md",
     "LICENCE"
@@ -116,7 +120,7 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "//ci": "What CI runs that needs nothing beside this repository. The behavioural gates are not here: they read the reference application, so they live in `replay` and `mutate` and run only where a checkout of it exists.",
-    "ci": "npm run build && npm run verify && npm run measure && npm run garden && node tools/vendor-sync.mjs --check && node tools/smoke-package.mjs",
+    "ci": "npm run build && npm run verify && npm run measure && npm run garden && node tools/smoke-package.mjs",
     "smoke": "node tools/smoke-package.mjs",
     "prepack": "npm run build",
     "prepublishOnly": "npm run verify:starter",
@@ -128,9 +132,7 @@
     "measure:livingdoc": "node metrics/measure.mjs ../livingdoc",
     "mutate": "node tools/mutate.mjs ../livingdoc",
     "//replay": "Needs a TypeScript-capable runtime (bun, deno, or node with type stripping): the scenarios import the reference app's core.ts directly. It also needs the engine built, because the harness drives dist/ rather than a copy of the source.",
-    "replay": "npm run build && node replay/crosscheck.mjs && node replay/runtime.serialization.test.mjs && node replay/harness.selftest.mjs",
-    "vendor:sync": "node tools/vendor-sync.mjs",
-    "vendor:check": "node tools/vendor-sync.mjs --check"
+    "replay": "npm run build && node replay/crosscheck.mjs && node replay/runtime.serialization.test.mjs && node replay/harness.selftest.mjs"
   },
   "devDependencies": {
     "@types/react": "^19",

@@ -41,7 +41,7 @@ v0.11 の作業を引き継いだ AI が、いちばん助かったのは `SPACT
 | `crosscheck` | **再現性のみ**（run とその replay の一致） | 振る舞いの正しさ。**間違っていても決定論的なら通す** |
 | `runtime.serialization` | 状態の assertion | 書かれていない振る舞い |
 | `harness.selftest` | crosscheck が仕込んだ乖離を検出できるか | |
-| `vendor-sync --check` | 3つのコピーが正本と一致するか | |
+| `smoke-package` | pack → install → 実走。`files`/`exports`/`bin` の間違い | 中身の正しさ（動くかだけを見る） |
 | `measure` | 数を出す。推測を拒んで停止する | 良し悪しの判定（意図的にしない） |
 | `mutate` | **T3 機能の往復が本当に検査されているか** | 往復の2ケース以外すべて |
 
@@ -129,19 +129,31 @@ moderation 専有に見えるが `shared/source/mutations.ts` と `app/api/admin
 
 ---
 
-### D-005: livingdoc は Spacta を vendor する。パッケージ化は将来
-決定日 2026-08-02 / 再確認 2026-08-03
+### D-005: Spacta は npm パッケージとして配る。vendor は終了
+決定日 2026-08-13（v0.11）/ **2026-08-02 の「vendor する。パッケージ化は将来」を覆した決定である**
 
-`/workspace/livingdoc/verify/` は `/workspace/spacta/verify/` の byte-for-byte コピー（38ファイル）、
-`livingdoc/verify/starter/` は `starter/` のコピー（23ファイル）、エンジンは `engine/` が正本で3箇所へ配る。
+エンジンと検証器を**1パッケージ・1バージョン**で配る。`npm install spacta` で
+`spacta/runtime` / `spacta/react`（`dist/` の実体）と `spacta-verify` / `spacta-measure` /
+`spacta-garden` / `spacta-init` が同時に入る。
+**利用者の木にエンジンのコピーは1つも置かない** —— `starter/src/shared/spacta/` は削除し、
+`shell.tsx` は `spacta/react` を import する。
 
-**理由（2026-08-03 追記）:** パッケージ化を急がないのは、**アプリ2つ目が「何を配るべきか」を教えてくれるから。**
-今決めると `verify` / `engine` / `starter` / `garden` / `metrics` のどこまでが配布物か推測で線を引くことになる。
+**理由:** 旧決定は「アプリ2つ目が何を配るべきかを教えてくれる」から待つ、というものだった。
+待っている間に**同じ穴を2回踏んだ**（v0.10 で v0.9.x のコピー、v0.11 で `starter/package.json` の版ずれ）。
+そして境界は2つ目のアプリを待たずに決まった —— **エンジンと検証器は1つの契約の両半分である。**
+`verify/fixtures/` は `engine/` が生む形をそのまま符号化しているので、
+この2つがバージョンの水準で離れられる配布は、この仕組みが消しに来た腐り方をそのまま再現する。
+`mutate.mjs` と `replay/scenarios.mjs` だけが配布物から外れる（参照アプリを相対パスで掴むので、着地先で走れない）。
 
-**守る検査:** `tools/vendor-sync.mjs --check` が stale なら exit 1。
+**守る検査:** `tools/smoke-package.mjs` —— pack して、このリポジトリを一度も見ていない
+スクラッチ・プロジェクトに install し、**エンジンの往復・replay の cross-check・3つの CLI を実際に走らせる。**
+`files` / `exports` / `bin` の間違いを見られるのはここだけで、リポジトリ内の他の緑は全部そのまま緑になる。
+配ってはいけないもの（`mutate.mjs`・`scenarios.mjs`・`docs_HUMAN-ONLY/`・決定ログと未決事項）の**不在**も
+同じ場所で assert する。CI の `package` ジョブが毎回走らせる。
 
-**確かめ方:** v0.10 で実際に落ちるのを見た（L3・L9・L10・roles を欠いた v0.9.x のコピーが放置されていた）。
-**この文書を書いた日にも1件検出した**（`starter/package.json` の版上げが vendor 側に未反映）。
+**確かめ方:** 実走。`smoke` は「コーパスが同梱されていない」「fixtures が落ちた」を実際に赤にできる
+——`verify` の L6 の3行（self-test / wiring / docs）がそれぞれ別の同梱物を必要としており、
+1つでも欠けると出力から消えるので、それを assert している。
 
 ---
 
@@ -213,7 +225,7 @@ L8の走査語彙を上記3分割に広げ、対応する検体を `verify/fixtu
 | 不変条件 | 守る検査 | 確かめた？ |
 |---|---|---|
 | 記録器（`Recorder`）に `State` を持たせない | **`harness.selftest`**（"a State folded into an Action is rejected"） | ✅ 落ちるのを見た |
-| エンジンのコピーが正本と一致 | **`vendor-sync --check`** + `runtime.serialization` の3コピー照合 | ✅ 実際に検出 |
+| エンジンの正本が1つしか無い | **構造で閉じた（D-005）** —— コピーが存在しないので照合する対象が無い。配布物が壊れていないことは **`smoke-package`** | ✅ 実走 |
 | Effect のループを2つ書かない | **L4 effect-runtime**（手書き switch を `src/**` 全体で走査） | ⚠️ 部分的（`createRuntime` の複製は見ない） |
 | T3 機能の往復が実際に動く | **`runtime.serialization`** の状態 assertion | ⚠️ **10変異中5つ生き残り**（下記） |
 | **エンジンに `react` も `next` も入れない** | **`verify` の `engine-portability`** | ✅ 両方向を見た（下記） |
@@ -228,9 +240,15 @@ L8の走査語彙を上記3分割に広げ、対応する検体を `verify/fixtu
 ### エンジンへの `react` 混入は誰も止めなかった → 止まるようになった（2026-08-03）
 
 **追記（同日、`spacta@c494529`）:** `verify` に `engine-portability` を足した。
-`shared/spacta/` のうち `react.ts`（バインディングそのもの）以外を歩き、`react` / `react-dom` / `next`
-の import を落とす。**fail-closed** ——エンジンにファイルが増えたら既定で検査対象になる。
+`react.ts`（バインディングそのもの）以外を歩き、`react` / `react-dom` / `next` の import を落とす。
+**fail-closed** ——エンジンにファイルが増えたら既定で検査対象になる。
 再度植えたところ **exit 1、`src/shared/spacta/runtime.ts:21:1` を名指し**した。以下は検査を作る前の記録。
+
+**D-005（パッケージ化）後の走査範囲:** 利用者の木にエンジンのコピーはもう無いので、この検査は
+**`spacta` パッケージ自身の `engine/`**（`files` に入るので `node_modules/spacta/engine/` にも在る）を必ず歩く。
+対象プロジェクトが `src/shared/spacta/` を手で抱えていればそちらも歩く。
+**0ファイル走査で緑になる経路を残さないため**であり、配布形式が変わっても「見ていない」が
+「違反が無い」に化けないようにしてある。
 
 
 `engine/runtime.ts` の**冒頭コメント自身**がこう書いている:
@@ -238,13 +256,13 @@ L8の走査語彙を上記3分割に広げ、対応する検体を `verify/fixtu
 > There is no `react` and no `next` in this file, and there must never be one.
 > That is the unit that gets ported to SwiftUI or Compose.
 
-`import { useState } from "react";` を植え、`vendor-sync` で3コピーに配布した結果:
+`import { useState } from "react";` を植え、当時の同期スクリプトで3コピーに配布した結果:
 
 ```
 verify (starter)          Green, exit 0
 verify (livingdoc)        Green
 runtime.serialization     48 assertions, all passed
-vendor-sync               3 file(s) written（黙って配った）
+sync                      3 file(s) written（黙って配った）
 ```
 
 **移植可能性という設計の中心が、散文でしか守られていない。**

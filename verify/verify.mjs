@@ -617,7 +617,7 @@ export function checkSharedReverseDependency(file, text) {
 }
 
 // ───────────────────── engine-portability（掟ではない・err）─────────────────────
-// エンジン（`shared/spacta/` のうちアダプタ以外）に UI フレームワークが入っていないか。
+// エンジン（アダプタ以外）に UI フレームワークが入っていないか。
 //
 // **なぜ掟にしないか。** SPACTA.md は掟を10本と決めており、これはその11本目ではない。
 // 移植可能性は掟が守る性質ではなく、エンジンという1ファイルの設計上の約束である。
@@ -626,13 +626,25 @@ export function checkSharedReverseDependency(file, text) {
 // **なぜ要るか。** `engine/runtime.ts` の冒頭コメントは "There is no `react` and no `next` in
 // this file, and there must never be one. That is the unit that gets ported to SwiftUI or
 // Compose." と書いている。2026-08-03 に `import { useState } from "react";` を植えたところ、
-// verify は starter・livingdoc とも Green、serialization も 48 assertions 全部通り、
-// vendor-sync は3コピーへ黙って配った。**設計の中心が散文だけで守られていた。**
+// verify は緑、serialization も 48 assertions 全部通り、当時の同期スクリプトはコピー先へ
+// 黙って配った。**設計の中心が散文だけで守られていた。**
+//
+// **どこを歩くか（0.11 のパッケージ化で変わった点）。** エンジンはもう利用者の木に置かれた
+// コピーではなく、`spacta` パッケージそのものである。したがってこの検査は
+// **このパッケージ自身の `engine/`**（`files` に入っているので node_modules にも在る）を必ず歩き、
+// 加えて対象プロジェクトが `src/shared/spacta/` を手で抱えている場合はそちらも歩く。
+// 前者があるので、利用者側にコピーが無くても検査は 0 ファイルにならない —— 「見ていない」が
+// 「違反が無い」に化ける経路を、配布形式が変わっても残さない。
 //
 // react.ts は意図的に対象外である（バインディングそのものなので react を import して当然）。
-// 除外はそれ1つだけで、`shared/spacta/` に新しく置かれたファイルは既定で検査される
+// 除外はそれ1つだけで、エンジンのディレクトリに新しく置かれたファイルは既定で検査される
 // —— 増えたときに黙って穴が開くより、落ちて名指しされる方を選ぶ。
 const UI_FRAMEWORK = /^(react|react-dom|next)(\/|$)/;
+
+// このパッケージ自身のエンジン。`__dirname` は `verify/` なので、リポジトリでも
+// `node_modules/spacta/` でも同じ場所を指す。
+const PACKAGE_ROOT = join(__dirname, "..");
+const PACKAGE_ENGINE = join(PACKAGE_ROOT, "engine");
 
 export function checkEnginePlatformFreedom(file, text) {
   const sf = parse(file, text);
@@ -1217,10 +1229,12 @@ const CHECKS = [
     // SPACTA.md の掟は10本のままで、11本目を足していない —— 守っているのはエンジン1ファイルの
     // 設計上の約束であって、Spacta が普遍的に主張する性質ではない。
     //
-    // 木で走査する。役割で書けないのは、`src/shared/spacta/` が役割 `shared` に落ち、そこには
-    // `runEffect.ts` も `time.ts` も居るからである（あれらは react を import してよい）。
+    // 木で走査する。役割で書けないのは、対象プロジェクトの `src/shared/spacta/` が役割 `shared`
+    // に落ち、そこには `runEffect.ts` も `time.ts` も居るからである（あれらは react を import して
+    // よい）。そして正本のエンジンはそもそも利用者の `src/` に居ない —— 第2の根はこの
+    // パッケージ自身の `engine/` で、対象がどこであれ必ず歩かれる。
     law: "—", name: "engine-portability", severity: "err",
-    root: (r) => join(r, "src", "shared", "spacta"),
+    root: (r) => [join(r, "src", "shared", "spacta"), PACKAGE_ENGINE],
     match: (q) => /\.tsx?$/.test(q) && !/(^|\/)react\.ts$/.test(q),
     run: (f, text) => checkEnginePlatformFreedom(f, text),
     promise: "The engine names no UI framework, so it is still the unit that ports",
@@ -1297,11 +1311,22 @@ function rootsOf(c, r) {
   return Array.isArray(v) ? v : [v];
 }
 
+// 印字用の根のラベル。パッケージ自身の中にある根（engine-portability の `engine/`）は
+// **対象からの相対パスでは書かない**: 対象がどこにあるかで `../engine` にも
+// `../../node_modules/spacta/engine` にもなり、README の生成表がマシンごとにずれる。
+// `<spacta>/…` と名乗らせれば、どこから走らせても同じ文字列になる。
+function showRoot(p, r) {
+  const q = p.replace(/\\/g, "/");
+  const pkg = PACKAGE_ROOT.replace(/\\/g, "/");
+  if (q === pkg || q.startsWith(`${pkg}/`)) return `<spacta>/${relative(PACKAGE_ROOT, p).replace(/\\/g, "/")}`;
+  return relative(r, p).replace(/\\/g, "/") || ".";
+}
+
 // 印字用の「このチェックが見ている範囲」。役割で書かれたチェックはディレクトリではなく役割を名乗る
 // ——「app/ を歩いたが 0 件」より「役割 source のファイルが 0 件」の方が、次に何を直すかが分かる。
 function scopeOf(c, r) {
   if (c.roles) return c.roles.map((x) => `role ${x}`).join(", ");
-  return rootsOf(c, r).map((p) => relative(r, p).replace(/\\/g, "/") || ".").join(", ");
+  return rootsOf(c, r).map((p) => showRoot(p, r)).join(", ");
 }
 
 function filesOf(c, r) {
@@ -1594,7 +1619,7 @@ function extractRegexLiterals(src) {
 function renderChecksTable() {
   const cell = (s) => String(s).replace(/\|/g, "\\|"); // GFM: code span の中でも | は要エスケープ
   const rows = CHECKS.map((c) => {
-    const roots = c.roles ? "(role pass)" : rootsOf(c, "").map((p) => `\`${cell(p.replace(/\\/g, "/"))}/\``).join(", ");
+    const roots = c.roles ? "(role pass)" : rootsOf(c, "").map((p) => `\`${cell(showRoot(p, ""))}/\``).join(", ");
     // A role-driven check has no `match` regex to show: its scope *is* the role name, and the
     // names that resolve to it live in verify/platform/nextjs.mjs. Printing the roots it
     // happens to walk would put the framework name back into the document.

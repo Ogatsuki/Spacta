@@ -31,7 +31,7 @@ Read only the chapters you need.
 
 **Prerequisites:** Next.js **App Router** (Pages Router is out of scope) / React 18+ / TypeScript **`strict: true`** (exhaustiveness checking is the last line of defense, so this is effectively required). The database is unconstrained — fetching and persistence are outside Spacta's scope (§7-1).
 
-**Command notation:** `npm run verify` below is shorthand for `node verify/verify.mjs .`, defined in `starter/package.json`. No npm package is published yet, so outside the starter, run the commands at the end ("Next steps") directly.
+**Command notation:** `npm run verify` below is shorthand for `spacta-verify .`, defined in `starter/package.json`. `npm install spacta` puts that binary in `node_modules/.bin`, so `npx spacta-verify .` works in any project without a script.
 
 Other notes:
 
@@ -141,8 +141,8 @@ src/
 | **Core** | Pure logic. `init` / `update`. Contains no async, fetch, or `new Date()`. Safe to run anywhere | `features/*/core.ts` |
 | **Perform** | Executes that feature's Effects. Lives next to where the Effect vocabulary is declared (`types.ts`) | `features/*/perform.ts` |
 | **Shell** | JSX wiring only. State to props, operations to `Action`. Holds no state of its own | `features/*/shell.tsx` |
-| **Engine** | Runs the Effect queue serially and is the only place that calls `perform`. Always converts results into `Action` and hands them back to Core. Contains no domain branching, and knows neither React nor Next.js. **Not a place you edit** | `shared/spacta/runtime.ts` |
-| **Binding adapter** | Holds state to trigger re-renders, and captures time and IDs. The one place where React/Next.js changes land | `shared/spacta/react.ts` |
+| **Engine** | Runs the Effect queue serially and is the only place that calls `perform`. Always converts results into `Action` and hands them back to Core. Contains no domain branching, and knows neither React nor Next.js. **Not a place you edit — it is a dependency, not a file in your tree** | `spacta/runtime` |
+| **Binding adapter** | Holds state to trigger re-renders, and captures time and IDs. The one place where React/Next.js changes land | `spacta/react` |
 | **Source** | Entry point for non-determinism. Time, UUIDs, DB/API fetches (server side) | `shared/source.ts` |
 | **Transport** | Just POSTs and returns JSON. Names no vocabulary | `shared/runEffect.ts` |
 
@@ -338,7 +338,7 @@ export async function perform(effect: Effect): Promise<{ data?: Answer } | null>
 
 ```tsx
 "use client";
-import { useSpacta } from "@/shared/spacta/react";
+import { useSpacta } from "spacta/react";
 import { CounterActions } from "./components/CounterActions";
 import { CounterSummary } from "./components/CounterSummary";
 import { init, summarize, update } from "./core";
@@ -622,7 +622,7 @@ Implementing this revealed **a real counterexample to part (2) of the theorem.**
 
 This bug **survived while `verify` was green, `tsc` had zero errors, and E2E tests passed.** All three gates went blind at the same single point simultaneously.
 
-The fix was structural, not another check. `shared/spacta/runtime.ts` became the sole implementation of the loop, and it unconditionally returns a result as an Action even for Effects with no identifier. **If the sole implementation is correct, the round trip stops being something you need to verify.** That said, per §7-4, this doesn't mean `verify` now traces the wiring itself.
+The fix was structural, not another check. The engine (`spacta/runtime`) became the sole implementation of the loop, and it unconditionally returns a result as an Action even for Effects with no identifier. **If the sole implementation is correct, the round trip stops being something you need to verify.** That said, per §7-4, this doesn't mean `verify` now traces the wiring itself.
 
 Since then, part (2) has held for every scenario driven through the engine. Running the same scenarios through the old hand-written loops diverges.
 
@@ -652,7 +652,7 @@ Content in this chapter changes release to release. It's a different kind of thi
 
 - **The tooling is 30x the size of the Laws.** `verify.mjs` at 2,600+ lines guards `SPACTA.md`'s 79 lines. Single implementation, single author
 - **The reference app is small.** 4 of its 10 features are T1 and never round-trip. Only 5 features exercise the flagship mechanism
-- **No npm package is published.** For now, run `node verify/verify.mjs <projectRoot>` directly
+- **The package is new.** `npm install spacta` is how 0.11 ships; before it, the engine and the verifier were copied by hand and went stale twice. The install path has one release behind it and no long field record
 - **Structure changes across minor versions.** Dismantling the shared `Effect` union (§2-1) is one example. **Expect breaking changes at this scale until 1.0.** Migrations are noted in the CHANGELOG
 - **The central claim is measured on exactly one sample.** "The reference surface needed to add or change one feature doesn't grow" needs to be checked on an app in a different domain
 - **Whether an AI given only `SPACTA.md` can build an app in a different domain** is unverified
@@ -728,15 +728,15 @@ Another way to see it: in languages with an effect system, like Haskell or Koka,
 * **What's still unsettled:** [`spacta-open-questions.md`](../docs_AI-ONLY/spacta-open-questions.md)
 * **Design notes (attention, cognitive load):** [Alpha Evaluation](spacta-alpha-evaluation.md)
 
-How to run the tools (no npm package is published, so run these directly):
+How to run the tools (`npm install spacta` first — the binaries come out of `node_modules/.bin`):
 
 ```sh
-node verify/verify.mjs <projectRoot>          # boundary only
-node verify/verify.mjs <projectRoot> --tsc    # boundary, then types
-node metrics/measure.mjs <projectRoot>        # measure the spread of shared symbols
-node garden/garden.mjs <projectRoot>          # emit the cleanup work order (JSON)
+npx spacta-verify <projectRoot>          # boundary only
+npx spacta-verify <projectRoot> --tsc    # boundary, then types
+npx spacta-measure <projectRoot>         # measure the spread of shared symbols
+npx spacta-garden <projectRoot>          # emit the cleanup work order (JSON)
 ```
 
-Also works with bun (`bun verify/verify.mjs <projectRoot>`). Point it at a directory that contains `src/` or `app/`. Point it anywhere else and it scans zero files, refuses to claim green, and returns exit code 2.
+Also works with bun (`bunx spacta-verify <projectRoot>`). Point it at a directory that contains `src/` or `app/`. Point it anywhere else and it scans zero files, refuses to claim green, and returns exit code 2.
 
 **The most useful feedback is two things: "this part is confusing" and "isn't this a claim `verify` doesn't actually check."**

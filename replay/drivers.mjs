@@ -3,7 +3,7 @@
  *
  * A real live run — a browser, `next dev`, D1 — is not reachable from here, and faking one would
  * be worse than not having one. What is real in these runs is everything Spacta claims to be
- * about: the engine in `shared/spacta/runtime.ts` is the same file the app ships, and the
+ * about: the engine is the one the app installs, and the
  * `update` under test is the feature's own `core.ts`. Only `perform` (= `runEffect`) is replaced,
  * because that is the one function whose job is to leave the process. The limitation is printed
  * next to every result rather than left in a comment.
@@ -20,10 +20,9 @@
  * would quietly stop being about the same thing.
  */
 // The built engine — the same bytes an adopter installs, not a copy of the source that happens
-// to be nearby. It used to be `../starter/src/shared/spacta/runtime.ts`, the vendored corpus
-// copy, which was fine while these files never left the repository. Now that the harness ships,
-// the engine it drives has to be the one in the package; `runtime.serialization.test.mjs` still
-// asserts every vendored copy is byte-identical to `engine/`, so nothing stopped being covered.
+// to be nearby. It used to be `../starter/src/shared/spacta/runtime.ts`, back when the corpus
+// carried its own copy of the engine. There is no such copy now: the harness ships, and the
+// engine it drives is the one in the package.
 //
 // Requires `npm run build`. The npm scripts that reach this file run it first.
 import { createRecorder, createRuntime } from "../dist/runtime.js";

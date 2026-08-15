@@ -27,7 +27,7 @@ npx spacta-garden .      # info/warn turned into a work order
 | `features/<f>/shell.tsx` | JSX wiring: state into props, callbacks into `dispatch` | judgement, `useState` for feature state, an Effect loop |
 | `features/<f>/components/*` | pure functions of props | `useState`/`useEffect`, IO, non-determinism (L9, L10) |
 | `shared/source/*` | fetch and persistence, imported only by `app/**` | aggregation, formatting, generated ids/time (L5) |
-| `shared/spacta/*` or the `spacta` package | the engine. One Effect loop for everyone | anything you write |
+| the `spacta` package (`spacta/runtime`, `spacta/react`) | the engine. One Effect loop for everyone | anything you write — never a copy of it in `src/` |
 
 ## The ten Laws, in one line each
 
@@ -39,8 +39,8 @@ fetch, Core aggregates · L6 the verifier rejects planted violations · L7 `shar
 a feature · L8 no raw colours or arbitrary values · L9 no IO or non-determinism in components ·
 L10 feature components keep no state.
 
-Read §1 of `SPACTA.md` for the full text. If the project installed the package it is at
-`node_modules/spacta/docs_AI-ONLY/SPACTA.md`.
+Read §1 of `SPACTA.md` for the full text: `node_modules/spacta/docs_AI-ONLY/SPACTA.md`. It ships
+with the package, so it is the rulebook for the verifier this project actually runs.
 
 ## Adding an Effect
 

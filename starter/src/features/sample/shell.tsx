@@ -1,7 +1,7 @@
 /**
  * shell.tsx = Boundary between UI and IO (client). The frame is moved to layout/shared-ui and
- * the Effect loop lives in shared/spacta/runtime.ts, so what is left here is JSX wiring only:
- * state into props, callbacks into dispatch.
+ * the Effect loop lives in the installed `spacta` package, so what is left here is JSX wiring
+ * only: state into props, callbacks into dispatch.
  *
  * Do not write your own effect loop. useSpacta hands the queue to the engine, which performs
  * every Effect through this feature's own `perform` and feeds every outcome back in as an
@@ -10,7 +10,7 @@
  * none of it.
  */
 "use client";
-import { useSpacta } from "@/shared/spacta/react";
+import { useSpacta } from "spacta/react";
 import { CounterActions } from "./components/CounterActions";
 import { CounterSummary } from "./components/CounterSummary";
 import { init, summarize, update } from "./core";

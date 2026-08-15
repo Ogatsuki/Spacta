@@ -224,8 +224,9 @@ exists and is checked at the declaration, but nothing yet records the log.
 Run it yourself:
 
 ```sh
-node verify/verify.mjs <projectRoot>          # boundaries only
-node verify/verify.mjs <projectRoot> --tsc    # boundaries, then types
+npm install spacta
+npx spacta-verify <projectRoot>          # boundaries only
+npx spacta-verify <projectRoot> --tsc    # boundaries, then types
 ```
 
 Point it at a directory that actually contains `src/` or `app/`. Pointed anywhere else it

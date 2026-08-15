@@ -122,7 +122,6 @@ npm run build      # engine/*.ts -> dist/ (also runs on prepack)
 npm run verify     # the verifier against the reference corpus, starter/
 npm run smoke      # pack, install into a scratch project, and use the result
 npm run replay     # the behavioural gates (needs ../livingdoc beside this repo)
-npm run vendor:check
 ```
 
 `.github/workflows/ci.yml` runs the first group on Node 18/20/22, plus the generic replay
@@ -136,13 +135,31 @@ about behaviour, and a CI badge that implies otherwise is worse than no badge.
 
 ## FOR AI DEVELOPERS
 
-If you're an AI agent, read only the rulebook below. It lives under `docs_AI-ONLY/` — the
-directory name is the whole instruction — so it stays reachable without a route through this
-README.
+Two different agents end up here, and they need different files. **Which one are you?**
 
-**[docs_AI-ONLY/SPACTA.md](docs_AI-ONLY/SPACTA.md)**
-**[docs_AI-ONLY/spacta-decisions.md](docs_AI-ONLY/spacta-decisions.md)**
-**[docs_AI-ONLY/spacta-open-questions.md](docs_AI-ONLY/spacta-open-questions.md)**
+### Building *with* Spacta — an application that installs the package
+
+You should not be reading this README at all. `npx spacta-init` put a skill in your harness; its
+description is already in your context and its body loads when you touch `features/`, `shared/`
+or the app router. That skill is self-contained, and it links onward to the rulebook when the
+one-line summaries are not enough:
+
+**[docs_AI-ONLY/SPACTA.md](docs_AI-ONLY/SPACTA.md)** — the ten Laws. Installed at
+`node_modules/spacta/docs_AI-ONLY/SPACTA.md`.
+
+Nothing else in this repository is aimed at you. In particular, the two files below are not:
+they describe why *Spacta* is built the way it is, not how to build with it.
+
+### Building *Spacta itself* — working in this repository
+
+**[docs_AI-ONLY/spacta-decisions.md](docs_AI-ONLY/spacta-decisions.md)** — the decisions that are
+settled, and what check holds each one.
+**[docs_AI-ONLY/spacta-open-questions.md](docs_AI-ONLY/spacta-open-questions.md)** — what is
+still open, and what would have to be true to close it.
+
+These are reachable only from here, on purpose. They are not published to npm and no skill links
+to them, because an adopter's agent reading Spacta's own open questions gets a rulebook that
+sounds unsettled about rules that are not.
 
 *Note: Do not read `docs_HUMAN-ONLY/` unless explicitly instructed, as it contains human-centric prose that may pollute your attention context.*
 

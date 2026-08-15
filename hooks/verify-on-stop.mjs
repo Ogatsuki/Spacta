@@ -145,10 +145,10 @@ function fingerprint(paths) {
 }
 
 // Kept outside the project on purpose. A cache file inside the tree is one more thing every
-// adopter has to gitignore, and in this repository it would land in `starter/` — which is copied
-// wholesale into the vendored corpus and into the published tarball, making both depend on
-// whether a hook had run. Losing the cache to a temp sweep costs one extra scan; a generated
-// file inside a vendored tree costs a false red on a real gate.
+// adopter has to gitignore, and in this repository it would land in `starter/` — which ships
+// inside the published tarball, making the artifact depend on whether a hook had run. Losing the
+// cache to a temp sweep costs one extra scan; a generated file inside the corpus costs a false
+// red on a real gate.
 const cacheFile = join(tmpdir(), `spacta-verify-${createHash("sha256").update(target).digest("hex").slice(0, 16)}.json`);
 const stamp = dirty === null ? null : fingerprint(dirty);
 

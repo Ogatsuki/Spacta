@@ -227,13 +227,23 @@ check(existsSync(join(pkgDir, ".claude-plugin", "plugin.json")), "the plugin man
 const init = run(process.execPath, [join(pkgDir, "tools", "init.mjs"), consumer, "--dry-run"]);
 check(init.code === 0 && /would write .*skills\/spacta/.test(init.out), "spacta-init resolves its payload", init.err || init.out);
 
+// The one document an installed agent is sent to by path. SKILL.md names it as
+// `node_modules/spacta/docs_AI-ONLY/SPACTA.md`, so a `files` change that drops it turns a
+// working reference into a dangling one, and nothing else here would notice.
+check(existsSync(join(pkgDir, "docs_AI-ONLY", "SPACTA.md")), "the rulebook SKILL.md points at shipped");
+
 console.log("\nwhat must not have shipped:");
 for (const absent of ["docs_HUMAN-ONLY", "node_modules"]) {
   check(!existsSync(join(pkgDir, absent)), `${absent}/ is absent from the package`);
 }
+// The working record of the people building Spacta. Nothing installed links to either, and a
+// tarball carrying them reads as if it held two rulebooks.
+for (const absent of ["spacta-decisions.md", "spacta-open-questions.md"]) {
+  check(!existsSync(join(pkgDir, "docs_AI-ONLY", absent)), `docs_AI-ONLY/${absent} is absent — it is repo-internal`);
+}
 // `tools/` ships one file. `mutate.mjs` reaches the reference app by relative path and
-// `vendor-sync.mjs` writes into a sibling checkout — neither can run where this lands.
-for (const absent of ["mutate.mjs", "vendor-sync.mjs", "smoke-package.mjs"]) {
+// `smoke-package.mjs` packs this repository — neither can run where this lands.
+for (const absent of ["mutate.mjs", "smoke-package.mjs"]) {
   check(!existsSync(join(pkgDir, "tools", absent)), `tools/${absent} is absent — it is repo-internal`);
 }
 // The line inside `replay/`: the harness ships, the scenarios do not. If these ever appear in a

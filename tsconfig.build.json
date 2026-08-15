@@ -7,9 +7,9 @@
   // and an application should not have to arrange for TypeScript from `node_modules` to be
   // transpiled before it can use it.
   //
-  // The `.ts` source ships too (see `files` in package.json). It is the readable copy, and it
-  // is what `vendor-sync` still pushes into the reference corpus — `dist/` is for consumers,
-  // never for this repository's own gates.
+  // The `.ts` source ships too (see `files` in package.json). It is the readable half — what an
+  // adopter opens when they want to know what the engine does, and what `engine-portability`
+  // walks. `dist/` is what an application imports.
   "compilerOptions": {
     "target": "ES2020",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],

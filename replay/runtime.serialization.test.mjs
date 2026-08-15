@@ -17,13 +17,13 @@
  *
  * No dependencies. Non-zero exit on failure.
  */
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 // The built engine, for the same reason `drivers.mjs` uses it: these assertions are about the
-// engine that ships. The "source and its copies" section below still reads `engine/runtime.ts`
-// and every vendored copy directly, so byte-identity remains checked against the source.
+// engine that ships.
+//
+// This file used to end with a byte-identity check over "the source and its copies" — the engine
+// lived in three places at once and nothing but that assertion held them together. 0.11 ships
+// `spacta` as a package, so the copies are gone and there is nothing left to compare: an
+// application imports `spacta/runtime` and `engine/` is the only engine there is.
 import { createRecorder, createRuntime } from "../dist/runtime.js";
 import * as moderation from "../../livingdoc/src/features/moderation/core.ts";
 import * as saved from "../../livingdoc/src/features/saved/core.ts";
@@ -31,30 +31,6 @@ import * as pageview from "../../livingdoc/src/features/pageview/core.ts";
 import * as draft from "../../livingdoc/src/features/draft/core.ts";
 import * as watchlist from "../../livingdoc/src/features/watchlist/core.ts";
 import { createIO, legacyRun } from "./drivers.mjs";
-
-const here = dirname(fileURLToPath(import.meta.url));
-const starterEngine = join(here, "..", "starter", "src", "shared", "spacta");
-const livingdocEngine = join(here, "..", "..", "livingdoc", "src", "shared", "spacta");
-/**
- * The engine's one source, and every place a copy of it lands.
- *
- * `engine/` is the source; the rest are copies — starter ships it as the template, livingdoc
- * runs it, and `livingdoc/verify/starter/` carries it because livingdoc bundles its own
- * verifier whose wiring test needs a corpus. The list used to have no source in it, only
- * peers compared against each other, which meant an edit to any one of them could be
- * propagated in the wrong direction. `engine/` is first here on purpose: it is what the
- * others are compared *to*, and `bun engine/sync.mjs` is what puts them back.
- *
- * A new copy belongs in `engine/sync.mjs` and here on the day it is made. A copy on neither
- * list is a copy nothing propagates to and nothing checks.
- */
-const engineSource = join(here, "..", "engine");
-const engineCopies = [
-  engineSource,
-  starterEngine,
-  livingdocEngine,
-  join(here, "..", "..", "livingdoc", "verify", "starter", "src", "shared", "spacta"),
-];
 
 let failures = 0;
 let checks = 0;
@@ -208,13 +184,6 @@ async function recordedRun() {
   runtime.dispatch({ type: "WRITE", key: "comment", correlationId: "c2" });
   await sleep(60);
   return { state: runtime.getState(), record };
-}
-
-// ───────────────────────── 5. the two copies of the engine have not drifted ───────────────
-
-function identical(name) {
-  const first = readFileSync(join(engineCopies[0], name));
-  return engineCopies.every((dir) => readFileSync(join(dir, name)).equals(first));
 }
 
 // ───────────────────────── run ─────────────────────────
@@ -741,10 +710,6 @@ assertEqual(pages(unwatchFailed.state), ["p_a", "p_b"],
   "a rejected removal puts the page back, and back in the position it held");
 assertEqual(unwatchFailed.state.notice, "Request failed (500)", "under a notice saying why");
 assertEqual(unwatchFailed.state.pending, [], "and nothing is left claiming to be in flight");
-
-console.log(`\nengine — the source and its ${engineCopies.length - 1} copies:`);
-assert(identical("runtime.ts"), "runtime.ts matches engine/runtime.ts everywhere it lands");
-assert(identical("react.ts"), "react.ts matches engine/react.ts everywhere it lands");
 
 console.log(
   failures === 0

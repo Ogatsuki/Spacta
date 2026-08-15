@@ -3,19 +3,20 @@
 # Until now every check in this repository was invoked by hand. That is not a small gap for a
 # project whose own definition of a Law is "physically enforced via failure": a check that runs
 # when someone thinks of it is Advice with a good reputation. The evidence is already on the
-# record — the vendored copies in the reference app went stale twice (v0.9.x found at v0.10,
-# v0.10 found at v0.11), and both times the tool that would have caught it existed and was not
-# run.
+# record — while the engine and the verifier were copied into adopters by hand, those copies went
+# stale twice (v0.9.x found at v0.10, v0.10 found at v0.11), and both times the tool that would
+# have caught it existed and was not run. The copies are gone (0.11 ships a package); the habit
+# of running gates only when someone remembers is what this file removes.
 #
 # What this file can and cannot cover is worth stating, because a green here must not be read as
 # more than it is:
 #
 #   covered            build, the verifier against its own corpus, measure, garden, the generic
 #                      replay self-test, and the published artifact (packed, installed, used).
-#   covered on request the behavioural gates — cross-check, runtime serialization, mutate — and
-#                      the full vendor check. They read the reference application, which lives
-#                      in another repository, so they run only where a checkout is available.
-#                      When it is not, the job says so loudly instead of passing quietly.
+#   covered on request the behavioural gates — cross-check, runtime serialization, mutate. They
+#                      read the reference application, which lives in another repository, so they
+#                      run only where a checkout is available. When it is not, the job says so
+#                      loudly instead of passing quietly.
 #   not covered        semantic correctness. `verify` says so itself on every run.
 
 name: CI
@@ -63,11 +64,6 @@ jobs:
 
       - name: garden — the info/warn pass must run to completion
         run: npm run garden
-
-      # Covers the two sites that live in this repository. The reference app's sites are
-      # reported as absent and checked in the `reference-app` job instead.
-      - name: vendor — every copy present here matches its source
-        run: node tools/vendor-sync.mjs --check
 
   # ─────────────────────────────────────────────────────────────────────────────
   # The part of the replay machinery that names no application: it plants
@@ -135,7 +131,7 @@ jobs:
           fi
 
       # `livingdoc` is the directory name every tool in this repository expects beside it —
-      # `tools/vendor-sync.mjs` and `replay/scenarios.mjs` both reach for `../livingdoc`.
+      # `replay/scenarios.mjs` and `tools/mutate.mjs` both reach for `../livingdoc`.
       - uses: actions/checkout@v4
         if: steps.gate.outputs.available == 'true'
         with:
@@ -156,11 +152,6 @@ jobs:
         if: steps.gate.outputs.available == 'true'
         working-directory: spacta
         run: bun verify/verify.mjs ../livingdoc
-
-      - name: vendor — including the reference app's copies
-        if: steps.gate.outputs.available == 'true'
-        working-directory: spacta
-        run: bun tools/vendor-sync.mjs --check
 
       - name: replay cross-check — a run rebuilds from (initData, actions)
         if: steps.gate.outputs.available == 'true'
@@ -192,7 +183,6 @@ jobs:
             echo "- \`replay/crosscheck.mjs\` — that a run rebuilds from \`(initData, actions[])\`"
             echo "- \`replay/runtime.serialization.test.mjs\` — what the engine and the features do"
             echo "- \`tools/mutate.mjs\` — which gates notice a broken round trip"
-            echo "- \`vendor-sync --check\` for the reference app's vendored copies"
             echo
             echo "The other jobs checked structure only. Structure being green says nothing"
             echo "about behaviour — \`verify\` prints that on every run, and it is true here too."
