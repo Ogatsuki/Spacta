@@ -2301,7 +2301,7 @@ function printUnclassified(unknown) {
   console.error("      really has (the roles and what each one means are listed at the top of that file),");
   console.error("      or to IGNORED if Spacta genuinely does not govern it (config, generated output).");
   console.error("      That table is Form, not Law — a project is expected to edit it when its Form");
-  console.error("      changes (docs_HUMAN-ONLY/setup.md step 5). A role with `laws: []` is a valid");
+  console.error("      changes (docs_HUMAN-ONLY/setup.md, \"Customizing the Form\"). A role with `laws: []` is a valid");
   console.error("      answer: a declared weakness is printed on every run, an unnameable file is not.");
   console.error("   2. Use a convention that already has a role — move or rename the file so it lands on");
   console.error("      one. The roles this project already uses are listed in the Roles block above.");
@@ -2365,7 +2365,7 @@ function printTrustBoundary(report, rolesSeen) {
       console.log(`        ${r.name} matched 0 files (${r.scope})`);
     }
     console.log("    If this project does have such code, the check is pointed at the wrong place:");
-    console.log("    fix its roles (or root/match) in CHECKS (docs_HUMAN-ONLY/setup.md step 5).");
+    console.log("    fix its roles (or root/match) in CHECKS (docs_HUMAN-ONLY/setup.md, \"Customizing the Form\").");
   }
 
   const unmeasured = unmeasuredRoles(rolesSeen);
@@ -2431,7 +2431,7 @@ if (wiringDead === null) {
   }
   console.error("\nA check that selects no files reports no violations, which is indistinguishable");
   console.error("from a check that passed. Fix its `roles` (or root/match) in CHECKS, or extend the corpus.");
-  console.error("If you customised the Form on purpose (docs_HUMAN-ONLY/setup.md step 5), the fix is");
+  console.error("If you customised the Form on purpose (docs_HUMAN-ONLY/setup.md, \"Customizing the Form\"), the fix is");
   console.error("not only the glob: the reference corpus starter/ must be updated to the new Form too,");
   console.error("because this test measures the globs against starter/, never against your tree.\n");
   emitJson({

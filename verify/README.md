@@ -217,7 +217,8 @@ verify/
   platform/
     nextjs.mjs               Framework filenames -> roles, and what enforcement each role receives.
                              The only file in the verifier that knows Next.js exists. Form, not Law:
-                             a project edits it when its Form changes (setup.md step 5). It cannot be
+                             a project edits it when its Form changes (setup.md, "Customizing the
+                             Form"). It cannot be
                              swapped at runtime from user config — that would hollow out L6.
   fixtures/
     bad-core.core.ts         L2: Contains new Date/await/prisma/fetch (should be rejected)
