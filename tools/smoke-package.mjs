@@ -21,8 +21,8 @@
  * left to be inferred from a stack trace.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, readdirSync } from "node:fs";
+import { dirname, join, relative } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -205,7 +205,16 @@ check(verify.code === 0 && /verify: Green/.test(verify.out), "spacta-verify reac
 // verify/README.md. An `exports`/`files` mistake that dropped any of them shows up only here.
 check(/L6 self-test/.test(verify.out), "the L6 self-test ran — verify/fixtures/ shipped");
 check(/L6 wiring test/.test(verify.out), "the L6 wiring test ran — the starter/ corpus shipped");
-check(/docs: the check table/.test(verify.out), "the docs check ran — verify/README.md shipped");
+// The third L6 line is the one that deliberately does *not* survive installation. `verify/README.md`
+// documents the CHECKS registry for people working on Spacta itself, so 0.12 stopped publishing it,
+// and the drift check has nothing to compare against here. What must survive is the *saying so*:
+// the verifier has to report that it did not check, rather than printing a green with one fewer
+// line in it and letting the absence pass for a pass.
+check(
+  !/docs: the check table/.test(verify.out) && /check table drift not verified/.test(verify.out),
+  "the docs check declares itself unverified — verify/README.md is repo-only, and its absence is stated",
+  verify.out,
+);
 
 const measure = run(process.execPath, [join(pkgDir, "metrics", "measure.mjs"), target]);
 let measured = null;
@@ -232,9 +241,58 @@ check(init.code === 0 && /would write .*skills\/spacta/.test(init.out), "spacta-
 // working reference into a dangling one, and nothing else here would notice.
 check(existsSync(join(pkgDir, "docs_AI-ONLY", "SPACTA.md")), "the rulebook SKILL.md points at shipped");
 
+// ───────────────────────── 4b. every link in the package resolves inside it ────────────────
+// The repository and the tarball are not the same tree, and the documents do not automatically
+// know which one they are being read from. `README.md` linked to the guides, the setup page, the
+// decision log and the open questions by relative path — correct on GitHub, and four dead links
+// the moment the same file is opened in `node_modules/spacta/`. The verifier printed the same
+// mistake at runtime: "fix the Form, see docs_HUMAN-ONLY/setup.md", a directory `files` has never
+// carried, said at the one moment the reader most needs it to be there.
+//
+// The rule this enforces is the only one that survives both readings: **a relative link may point
+// only at something that shipped; everything else is an absolute URL.** Prose may still name an
+// unshipped path — "it lives in the repository" is a true sentence — because a link is a promise
+// that a path resolves and a sentence is not. So this walks links, not mentions.
+console.log("\nevery relative link in the package resolves inside it:");
+
+const markdown = [];
+(function walk(dir) {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules") continue;
+    const p = join(dir, entry.name);
+    if (entry.isDirectory()) walk(p);
+    else if (entry.name.endsWith(".md")) markdown.push(p);
+  }
+})(pkgDir);
+
+const dangling = [];
+for (const file of markdown) {
+  const text = readFileSync(file, "utf8");
+  for (const [, target] of text.matchAll(/\]\(([^)\s]+)\)/g)) {
+    if (/^(https?:|mailto:|#)/.test(target)) continue;
+    const [path] = target.split("#");
+    if (!path) continue; // a pure anchor
+    if (!existsSync(join(dirname(file), path))) {
+      dangling.push(`${relative(pkgDir, file)} -> ${target}`);
+    }
+  }
+}
+check(
+  dangling.length === 0,
+  `${markdown.length} shipped document(s) carry no link to a file the tarball lacks`,
+  dangling.join("\n"),
+);
+
 console.log("\nwhat must not have shipped:");
 for (const absent of ["docs_HUMAN-ONLY", "node_modules"]) {
   check(!existsSync(join(pkgDir, absent)), `${absent}/ is absent from the package`);
+}
+// Prose for people. Every one of these is a document somebody sits down and reads, none of them is
+// reachable from anything the package installs, and together they were 80kB of a 169kB tarball. The
+// survey that settled it: react, react-dom, next, typescript, eslint, @eslint/js, typescript-eslint
+// and tailwindcss ship README and LICENSE and nothing else — all eight of them.
+for (const absent of ["CHANGELOG.md", "verify/README.md", "starter/README.md"]) {
+  check(!existsSync(join(pkgDir, absent)), `${absent} is absent — people read it, and the repository holds it`);
 }
 // The working record of the people building Spacta. Nothing installed links to either, and a
 // tarball carrying them reads as if it held two rulebooks.

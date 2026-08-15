@@ -1,6 +1,6 @@
 {
   "name": "spacta",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Spacta — Pure-boundary architecture physically enforced by AST static verification",
   "keywords": [
     "architecture",
@@ -71,17 +71,30 @@
     "be publishing code that cannot run where it lands."
   ],
   "//files-docs": [
-    "`docs_AI-ONLY/SPACTA.md` ships because SKILL.md sends the agent to it by that exact path.",
-    "`spacta-decisions.md` and `spacta-open-questions.md` do not: they are the working record of",
-    "the people building Spacta, no installed file links to them, and shipping documents nothing",
-    "can reach only makes the tarball look like it holds two rulebooks."
+    "One rule, and it removes a whole class of broken link: **the package carries documents that",
+    "are read by machines, plus the two npm always shows a human — README and LICENCE. Nothing",
+    "else.** Everything a person reads at leisure lives in the repository, and the package points",
+    "there with an absolute URL rather than shipping a copy.",
+    "What that leaves in: `docs_AI-ONLY/SPACTA.md` (SKILL.md sends the agent to it by path),",
+    "`skills/**` and `garden/GARDENER.md` (the agent is told to read them by the tools' output).",
+    "What it takes out: CHANGELOG.md, verify/README.md and starter/README.md — prose for people,",
+    "80kB of it, none of it reachable from anything the package installs.",
+    "The rule is not a preference. The repository and the tarball are different trees, so a",
+    "relative link written in one is a dead link in the other; shipping only what the machines",
+    "read means there is almost nothing left that could hold such a link, and what remains is",
+    "checked — `tools/smoke-package.mjs` walks every installed document and fails on a relative",
+    "link with nothing behind it. Surveyed eight packages an adopter already has installed",
+    "(react, react-dom, next, typescript, eslint, @eslint/js, typescript-eslint, tailwindcss):",
+    "all eight ship README and LICENSE and nothing else. This is the convention, not a departure."
   ],
   "files": [
     "engine",
     "dist",
     "verify",
+    "!verify/README.md",
     "starter",
     "!starter/garden-report.json",
+    "!starter/README.md",
     "replay/index.mjs",
     "replay/runner.mjs",
     "replay/harness.mjs",
@@ -93,7 +106,6 @@
     "tools/init.mjs",
     ".claude-plugin",
     "docs_AI-ONLY/SPACTA.md",
-    "CHANGELOG.md",
     "README.md",
     "LICENCE"
   ],

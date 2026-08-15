@@ -1,7 +1,7 @@
 {
   "name": "spacta",
   "description": "Pure-boundary architecture, enforced rather than remembered. Adds the Spacta skill (the ten Laws, where logic goes, how to check behaviour) and a Stop hook that holds a turn which left `verify` red.",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "author": {
     "name": "Ogatsuki"
   },

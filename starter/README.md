@@ -57,7 +57,8 @@ npx spacta-verify . --tsc      # Finally, verify TypeScript types via tsc --noEm
 
 > `spacta-verify` (without `--tsc`) runs successfully using **only TypeScript** as a parser. React/Next.js types are only required when running the type checker (`--tsc`).
 > Enforce `npm run verify` as a gate in CI (pre-commit / GitHub Actions) to prevent design drift (`SPACTA.md` §3.4).
-> The full bootstrap, including the agent-facing half (`npx spacta-init`), is in `docs_HUMAN-ONLY/setup.md`.
+> The full bootstrap, including the agent-facing half (`npx spacta-init`), is in
+> [`docs_HUMAN-ONLY/setup.md`](../docs_HUMAN-ONLY/setup.md).
 
 ## Adding Features
 

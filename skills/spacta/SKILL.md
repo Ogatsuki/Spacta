@@ -82,4 +82,7 @@ If you changed behaviour and asserted nothing, you have shipped an unchecked cla
 - Do not create `shell.tsx` for a feature with no interaction.
 - Do not promote a component into `shared/ui` because a `clone` info appeared. Promote only after
   the same shape has actually repeated in two or more features.
-- Do not read `docs_HUMAN-ONLY/`.
+- Do not go looking for Spacta's own documentation beyond the references above. The installed
+  package carries exactly one rulebook (`SPACTA.md`); the guides, the decision log and the open
+  questions live in the repository and are not installed. Reading a project's open questions
+  makes settled rules sound unsettled.

@@ -1,6 +1,6 @@
 {
   "name": "spacta-starter",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "private": true,
   "//scripts": [
     "The CLIs come out of node_modules, not out of a copied verify/ directory. That is the whole",
@@ -14,7 +14,7 @@
     "measure": "spacta-measure ."
   },
   "dependencies": {
-    "spacta": "^0.11.0"
+    "spacta": "^0.12.0"
   },
   "devDependencies": {
     "typescript": "^5",

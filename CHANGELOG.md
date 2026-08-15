@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.12 — The package carries what machines read
+
+0.11 made Spacta installable. This asks the question that answer left open: **who reads each of
+these files, and from which tree?**
+
+The tarball and the repository are not the same directory, and until now the documents did not
+know it. `README.md` reached the guides, the setup page, the decision log and the open questions
+by relative path — right on GitHub, four dead links the moment the same file is opened in
+`node_modules/spacta/`. The verifier said it out loud on a bad day: *"fix the Form, see
+`docs_HUMAN-ONLY/setup.md`"* — a directory `files` has never carried — printed at the one moment
+the reader most needs it to be there.
+
+One rule closes the whole class:
+
+> **The package carries the documents a machine reads, plus the two npm always shows a human
+> (README and LICENCE). Everything a person reads at leisure lives in the repository.**
+
+This is the convention, not a departure from it. Surveyed the packages an adopter already has
+installed — react, react-dom, next, typescript, eslint, `@eslint/js`, typescript-eslint,
+tailwindcss — and **all eight ship README and LICENSE and nothing else.**
+
+### Breaking
+
+- **`CHANGELOG.md`, `verify/README.md` and `starter/README.md` are no longer published.** 80kB of
+  prose for people, none of it reachable from anything the package installs. They are in the
+  repository, and `README.md` links to each by absolute URL. A project reading them out of
+  `node_modules/` was reading a copy that goes a version stale the moment it is installed.
+- **The third L6 line changes in an installed copy.** `verify/README.md` holds the check table
+  the docs-drift check compares against, so an installed verifier has nothing to compare and now
+  prints *"check table drift not verified: … not published, so this line is expected in an
+  installed copy"* instead of the green line. What it protected — the table not drifting from the
+  `CHECKS` registry — is a property of this repository's documentation, and it is still checked
+  here, in CI. **The check did not weaken; it went back to the tree it was about.** `smoke-package`
+  asserts the verifier *says* it did not check, because an absent line and a passing line look the
+  same from outside.
+
+### Added
+
+- **`smoke-package` walks every document in the installed package** and fails on a relative link
+  with nothing behind it. Planted one and watched it fall, by name. Prose may still mention an
+  unshipped path — a link is a promise that a path resolves, a sentence is not — so the gate reads
+  links, not mentions.
+- **`README.md` says what lands in `node_modules/spacta/`**, which is the question an installed
+  reader actually has and the repository layout does not answer.
+
+### Changed
+
+- **The two audience sections became one `Documentation` section.** It names the single installed
+  document (`SPACTA.md`) and sends everything else to the repository, with a table of what is
+  where. The previous split — "FOR AI DEVELOPERS" / "FOR HUMAN DEVELOPERS" — described the
+  repository, and the file it lives in is read most often from npm.
+- **Pointers printed by the tools name the repository, not a path.** `verify`'s Form-customisation
+  message and `verify/platform/nextjs.mjs` both link to `github.com/Ogatsuki/Spacta`.
+
 ## 0.11 — A feature's vocabulary goes back to the feature
 
 **Zero new Laws.** `SPACTA.md` still holds ten, and the reference app's `shared/types.ts` went
@@ -83,6 +137,20 @@ the coupling look managed.
   nothing else — human commits and other agents pass straight through. The Law is CI. This is
   the same check moved to where fixing it costs one edit.
 
+- **The documents learn which tree they are being read from.** The tarball is not the
+  repository, and until now the prose did not know it: `README.md` reached the guides, the setup
+  page, the decision log and the open questions by relative path — right on GitHub, four dead
+  links the moment the same file is opened in `node_modules/spacta/`. The verifier made the same
+  mistake out loud, printing *"fix the Form, see `docs_HUMAN-ONLY/setup.md`"* — a directory
+  `files` has never carried — at the exact moment a reader needs it to be there. One rule now
+  covers both readings: **a relative link may name only something that ships; everything else is
+  an absolute URL.** Prose may still mention an unshipped path, because a link is a promise that
+  a path resolves and a sentence is not. `README.md` also gained the table of what actually lands
+  in `node_modules/spacta/`, which is the question an installed reader has and the repository
+  layout does not answer.
+
+  Enforced, not asserted: `smoke-package` walks every document in the installed package and fails
+  on a relative link with nothing behind it. Planted one and watched it fall, by name.
 - **`tools/smoke-package.mjs` checks the artifact rather than the source tree.** It packs,
   installs the tarball into a scratch project that has never seen this repository, and then uses
   it both ways an adopter will: importing the engine, and running the CLIs. It is the only gate
@@ -237,11 +305,6 @@ the coupling look managed.
 - **`crosscheck` kills nothing, and now that is measured rather than asserted.** It establishes
   reproducibility, not correctness. Behaviour goes in `runtime.serialization` as state
   assertions.
-- **Nothing has run.** `verify`, `tsc`, the cross-check and the serialization test all execute the
-  engine and five features' `core.ts`. Every `shell.tsx`, every `components/`, the contents of
-  every `perform.ts`, every `route.ts` and all of `queries.ts` — the SQL included — have never
-  been executed by anything. This is the largest open item at 0.11 and it is not a design
-  question.
 - **The package has one release behind it.** `npm install spacta` is checked by
   `tools/smoke-package.mjs` — packed, installed into a scratch project, and used both ways an
   adopter will — but no second application has adopted it yet, so what should be distributed is

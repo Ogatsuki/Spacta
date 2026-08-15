@@ -5,7 +5,7 @@ without holding the rest of the application in your head**, and so that a script
 reviewer, not a memory, not a promise — can confirm afterwards that the work stayed inside
 its boundary.
 
-This is a **v0.11 early-feedback release**. The architecture runs and the verifier runs; the
+This is a **v0.12 early-feedback release**. The architecture runs and the verifier runs; the
 scope of what is actually enforced is narrower than the ambition, and this document exists
 partly to say exactly how much narrower.
 
@@ -242,4 +242,4 @@ This document is independent of that guide by design: it is not a translation an
 summary, and it carries no obligation to track the Japanese guide's structure as that guide
 grows. It is meant to be correct on its own terms, and to be corrected on its own terms.
 Feedback on what is confusing, or on any claim here that the verifier does not actually
-check, is the most useful thing you can send at v0.11.
+check, is the most useful thing you can send at v0.12.

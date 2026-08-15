@@ -51,6 +51,13 @@ const FIXTURES = join(__dirname, "fixtures");
 // 名前→役割の表。未分類を申告する時、直す場所として名指しする（メッセージに書き写さない）。
 const PLATFORM_TABLE = join(__dirname, "platform", "nextjs.mjs");
 
+// Form を作り替える手順の在り処。**URL である理由は配布形式にある。**
+// この検証器はふつう `node_modules/spacta/verify/verify.mjs` として走り、手順書はそこに無い
+// ——0.12 以降、パッケージが運ぶ文書は機械が読むものだけで、人が読む文書はリポジトリに置いた。
+// 相対パスで名乗れば、「Form を直せ」と言われた利用者がインストール木のどこにも無いファイルを
+// 探すことになる。**一番助けが要る瞬間に届かない案内は、案内が無いより悪い。**
+const SETUP_DOC = "https://github.com/Ogatsuki/Spacta — docs_HUMAN-ONLY/setup.md, \"Customizing the Form\"";
+
 // Resolve `typescript` from the target project first (a project placing this script inside
 // itself would just `import 'typescript'`). Fall back to the verifier's own dependency so a
 // target without node_modules — notably `starter/` — can still be verified. Without this
@@ -1663,7 +1670,11 @@ function checkChecksTableDrift() {
   const blk = readChecksBlock();
   if (blk.missing) {
     // README ごと持ち出された verify.mjs 単体コピーを赤にはしない。ただし黙りもしない。
-    return { violations: [], note: `check table drift not verified: no README at ${README_PATH}` };
+    // 0.12 以降、これが**既定**である。`verify/README.md` は人が読む文書なので配布物から外れ、
+    // インストールされた検証器の隣には無い。守っている性質（表と CHECKS が食い違わない）は
+    // このリポジトリの文書についてのものなので、失われる場所は「利用者の走行」ではなく無い
+    // ——それでも黙らないのは、「見ていない」を「違反が無い」と読ませないためである。
+    return { violations: [], note: `check table drift not verified: no verify/README.md here. It documents the CHECKS registry for people working on Spacta itself and is not published, so this line is expected in an installed copy` };
   }
   if (blk.noMarkers) {
     return { violations: [V(README_PATH, 1, 1, "docs-drift",
@@ -2301,7 +2312,7 @@ function printUnclassified(unknown) {
   console.error("      really has (the roles and what each one means are listed at the top of that file),");
   console.error("      or to IGNORED if Spacta genuinely does not govern it (config, generated output).");
   console.error("      That table is Form, not Law — a project is expected to edit it when its Form");
-  console.error("      changes (docs_HUMAN-ONLY/setup.md, \"Customizing the Form\"). A role with `laws: []` is a valid");
+  console.error(`      changes (${SETUP_DOC}). A role with \`laws: []\` is a valid`);
   console.error("      answer: a declared weakness is printed on every run, an unnameable file is not.");
   console.error("   2. Use a convention that already has a role — move or rename the file so it lands on");
   console.error("      one. The roles this project already uses are listed in the Roles block above.");
@@ -2372,7 +2383,7 @@ function printTrustBoundary(report, rolesSeen) {
       console.log(`        ${r.name} matched 0 files (${r.scope})`);
     }
     console.log("    If this project does have such code, the check is pointed at the wrong place:");
-    console.log("    fix its roles (or root/match) in CHECKS (docs_HUMAN-ONLY/setup.md, \"Customizing the Form\").");
+    console.log("    fix its roles (or root/match) in CHECKS (" + SETUP_DOC + ").");
   }
 
   const unmeasured = unmeasuredRoles(rolesSeen);
@@ -2438,7 +2449,7 @@ if (wiringDead === null) {
   }
   console.error("\nA check that selects no files reports no violations, which is indistinguishable");
   console.error("from a check that passed. Fix its `roles` (or root/match) in CHECKS, or extend the corpus.");
-  console.error("If you customised the Form on purpose (docs_HUMAN-ONLY/setup.md, \"Customizing the Form\"), the fix is");
+  console.error("If you customised the Form on purpose (" + SETUP_DOC + "), the fix is");
   console.error("not only the glob: the reference corpus starter/ must be updated to the new Form too,");
   console.error("because this test measures the globs against starter/, never against your tree.\n");
   emitJson({

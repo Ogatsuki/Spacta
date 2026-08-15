@@ -2,7 +2,7 @@
 
 **Spacta lets an AI agent work on one feature of a large app without ever needing to hold the whole app in its head — and lets you prove it stayed inside the lines.**
 
-This is a **v0.11 / early feedback release** — the architecture works, but the docs are still rough in places. Feedback on what's confusing is very welcome.
+This is a **v0.12 / early feedback release** — the architecture works, but the docs are still rough in places. Feedback on what's confusing is very welcome.
 
 ---
 
@@ -20,6 +20,28 @@ copies went silently stale twice.
 
 `react` and `typescript` are optional peers. You only need `react` if you import `spacta/react`,
 and you only need `typescript` for the CLIs — which every TypeScript project already has.
+
+### What lands in `node_modules/spacta/`
+
+Code, and the documents a machine reads. **Nothing a person reads at leisure** — those are in
+[the repository](https://github.com/Ogatsuki/Spacta), which is one link away and never out of
+sync with itself.
+
+| Installed | What it is |
+|---|---|
+| `dist/`, `engine/` | the compiled engine, and the readable `.ts` source beside it |
+| `verify/`, `garden/`, `metrics/measure.mjs` | the CLIs, plus the fixtures and corpus their self-tests need |
+| `replay/` (four files) | the cross-check harness — the half that names no application |
+| `starter/` | a working reference app, and what the L6 wiring test measures globs against |
+| `skills/`, `hooks/`, `.claude-plugin/` | the agent-facing half, written out by `npx spacta-init` |
+| `docs_AI-ONLY/SPACTA.md`, `garden/GARDENER.md` | read by the agent, and named by the tools' own output |
+| `README.md`, `LICENCE` | the two npm always shows a human |
+
+The reason is not tidiness. The tarball and the repository are different trees, so a relative
+link that is right in one is a dead link in the other — and the reader who hits it is someone who
+opened `node_modules/` because something had already gone wrong. Shipping only what the machines
+read leaves almost nothing that could hold such a link, and `smoke-package` fails on any that
+remain.
 
 ### The engine
 
@@ -116,6 +138,9 @@ through. The Law is CI. This is the same check moved to where fixing it costs on
 
 ### Working in this repository
 
+These need a `git clone`, not an install: the behavioural gates read scenario files and a
+reference application that the package deliberately does not carry.
+
 ```sh
 npm run ci         # everything CI runs that needs nothing beside this repo
 npm run build      # engine/*.ts -> dist/ (also runs on prepack)
@@ -133,55 +158,29 @@ about behaviour, and a CI badge that implies otherwise is worse than no badge.
 
 ---
 
-## FOR AI DEVELOPERS
+## Documentation
 
-Two different agents end up here, and they need different files. **Which one are you?**
+**One document is installed** — the rulebook the agent is sent to by path:
 
-### Building *with* Spacta — an application that installs the package
+**[docs_AI-ONLY/SPACTA.md](docs_AI-ONLY/SPACTA.md)** — the ten Laws, at
+`node_modules/spacta/docs_AI-ONLY/SPACTA.md`. If `npx spacta-init` has run you need not open it
+yourself: the skill in your harness links onward to it when its one-line summaries are not enough.
 
-You should not be reading this README at all. `npx spacta-init` put a skill in your harness; its
-description is already in your context and its body loads when you touch `features/`, `shared/`
-or the app router. That skill is self-contained, and it links onward to the rulebook when the
-one-line summaries are not enough:
+**Everything else is in the repository**, and stays there on purpose. A document read at leisure
+has no business being installed once per project across a monorepo, and a copy inside
+`node_modules/` is a copy that can be a version behind the thing it describes.
 
-**[docs_AI-ONLY/SPACTA.md](docs_AI-ONLY/SPACTA.md)** — the ten Laws. Installed at
-`node_modules/spacta/docs_AI-ONLY/SPACTA.md`.
+### → [github.com/Ogatsuki/Spacta](https://github.com/Ogatsuki/Spacta)
 
-Nothing else in this repository is aimed at you. In particular, the two files below are not:
-they describe why *Spacta* is built the way it is, not how to build with it.
+| Looking for | In the repository |
+|---|---|
+| Bootstrapping a project from scratch | [`docs_HUMAN-ONLY/setup.md`](https://github.com/Ogatsuki/Spacta/blob/master/docs_HUMAN-ONLY/setup.md) |
+| What Spacta is, and what a green `verify` does *not* mean | [`docs_HUMAN-ONLY/OVERVIEW.md`](https://github.com/Ogatsuki/Spacta/blob/master/docs_HUMAN-ONLY/OVERVIEW.md) |
+| The reasoning at length | [日本語](https://github.com/Ogatsuki/Spacta/blob/master/docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md) · [English](https://github.com/Ogatsuki/Spacta/blob/master/docs_HUMAN-ONLY/HUMAN_GUIDE.md) |
+| Release history | [`CHANGELOG.md`](https://github.com/Ogatsuki/Spacta/blob/master/CHANGELOG.md) |
+| What each check does, in detail | [`verify/README.md`](https://github.com/Ogatsuki/Spacta/blob/master/verify/README.md) |
+| Why Spacta is built this way — settled decisions, and what is still open | [`docs_AI-ONLY/`](https://github.com/Ogatsuki/Spacta/tree/master/docs_AI-ONLY) |
 
-### Building *Spacta itself* — working in this repository
-
-**[docs_AI-ONLY/spacta-decisions.md](docs_AI-ONLY/spacta-decisions.md)** — the decisions that are
-settled, and what check holds each one.
-**[docs_AI-ONLY/spacta-open-questions.md](docs_AI-ONLY/spacta-open-questions.md)** — what is
-still open, and what would have to be true to close it.
-
-These are reachable only from here, on purpose. They are not published to npm and no skill links
-to them, because an adopter's agent reading Spacta's own open questions gets a rulebook that
-sounds unsettled about rules that are not.
-
-*Note: Do not read `docs_HUMAN-ONLY/` unless explicitly instructed, as it contains human-centric prose that may pollute your attention context.*
-
----
-
-## FOR HUMAN DEVELOPERS
-
-what Spacta is, and what a green `verify` does and does not mean:
-
-**[docs_HUMAN-ONLY/OVERVIEW.md](docs_HUMAN-ONLY/OVERVIEW.md)**
-
-philosophical background:
-
-**[docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md](docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md)** (Japanese)
-
-**[docs_HUMAN-ONLY/HUMAN_GUIDE.md](docs_HUMAN-ONLY/HUMAN_GUIDE.md)** (English)
-
-release history (kept at the package root — `CHANGELOG.md` is the one file in this split that
-follows npm/GitHub convention rather than the human/AI split):
-
-**[CHANGELOG.md](CHANGELOG.md)**
-
-To bootstrap a new Spacta project from scratch:
-
-**[docs_HUMAN-ONLY/setup.md](docs_HUMAN-ONLY/setup.md)**
+*If you are an agent building an application: only `SPACTA.md` is for you. The decision log and
+the open questions say why Spacta is built the way it is, and reading a project's unsettled
+questions makes its settled rules sound unsettled.*
