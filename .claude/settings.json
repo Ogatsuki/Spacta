@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/hooks/verify-on-stop.mjs\" starter",
+            "timeout": 180,
+            "statusMessage": "Spacta: checking the reference corpus"
+          }
+        ]
+      }
+    ]
+  }
+}

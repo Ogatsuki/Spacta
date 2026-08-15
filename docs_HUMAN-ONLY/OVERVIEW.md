@@ -5,7 +5,7 @@ without holding the rest of the application in your head**, and so that a script
 reviewer, not a memory, not a promise — can confirm afterwards that the work stayed inside
 its boundary.
 
-This is a **v0.11 early-feedback release**. The architecture runs and the verifier runs; the
+This is a **v0.12 early-feedback release**. The architecture runs and the verifier runs; the
 scope of what is actually enforced is narrower than the ambition, and this document exists
 partly to say exactly how much narrower.
 
@@ -85,11 +85,12 @@ ran. From the reference implementation:
 
   NOT guaranteed by this green:
     - Type integrity (props / contracts)                    -> run `tsc --noEmit` separately
+    - Statement-level defects (unused, regex, invisible)    -> run ESLint separately
     - Judgement kept out of shell.tsx                       -> not checked
     - Widget-local state in shared/ui staying non-domain    -> not checked
     - Effect results actually reaching Core at runtime      -> partially checked
     - Concurrent dispatch during an in-flight Effect        -> not checked
-    - Write-path round trip without correlationId           -> not checked
+    - Write-path round trip in features below T3            -> not checked
     - Build order when delegating to parallel agents        -> not checked
     - Presentation consistency                              -> info only (L8), never blocks
     - Semantic correctness                                  -> never checked
@@ -224,8 +225,9 @@ exists and is checked at the declaration, but nothing yet records the log.
 Run it yourself:
 
 ```sh
-node verify/verify.mjs <projectRoot>          # boundaries only
-node verify/verify.mjs <projectRoot> --tsc    # boundaries, then types
+npm install spacta
+npx spacta-verify <projectRoot>          # boundaries only
+npx spacta-verify <projectRoot> --tsc    # boundaries, then types
 ```
 
 Point it at a directory that actually contains `src/` or `app/`. Pointed anywhere else it
@@ -234,10 +236,10 @@ walks zero files and exits `2`.
 ---
 
 Deeper philosophical background exists in Japanese, in
-[`docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md`](docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md).
+[`docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md`](ja/HUMAN_GUIDE.md).
 
 This document is independent of that guide by design: it is not a translation and not a
 summary, and it carries no obligation to track the Japanese guide's structure as that guide
 grows. It is meant to be correct on its own terms, and to be corrected on its own terms.
 Feedback on what is confusing, or on any claim here that the verifier does not actually
-check, is the most useful thing you can send at v0.11.
+check, is the most useful thing you can send at v0.12.

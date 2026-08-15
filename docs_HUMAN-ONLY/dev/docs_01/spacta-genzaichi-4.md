@@ -1,7 +1,10 @@
 # Spacta 現在地 4 — v0.11 完了時点の総括
 
-作成: 2026-08-03 / **`spacta-genzaichi-3.md`（v0.10 指示書）を置き換える。**
-前版と `spacta-v0.11-hikitsugi.md` は履歴として残すが、現在地としてはこちらが上位。
+作成: 2026-08-03 / 更新: 2026-08-13（配布形式の転換 D-005 を反映）
+**`spacta-genzaichi-3.md`（v0.10 指示書）を置き換える。**
+前版・`spacta-v0.11-hikitsugi.md`・`spacta-v0.11-jissou-keikaku.md`・`spacta-v0.10-kairyou-bunseki.md` は
+**`archive/` に移した。** どれも vendor 配布を前提に書かれており、現在の手順としては読めない
+（`⚠️ vendor-sync を忘れないこと` のような節が残っている）。現在地はこの1枚である。
 
 確信度タグは前版から継承: **[確立]** = 実測済み / **[決定]** = 著者判断済み・蒸し返さない /
 **[仮説]** = 未検証
@@ -36,9 +39,9 @@
 | | |
 |---|---|
 | リポジトリ | `/workspace/spacta`（道具）と `/workspace/livingdoc`（検証台）。**別々の git リポジトリ** |
-| ブランチ | 両方 `feature/v0.11-completion`。**両方 clean、全部コミット済み**（spacta 10、livingdoc 6） |
+| ブランチ | spacta は `npm-package`（D-005 の配布形式転換をここで進めた）。livingdoc は `master` で **未コミットの作業が残っている** ——検証台側はまだ vendor 形式（`src/shared/spacta/` と `verify/` のコピー）を抱えたままである |
 | 状態 | **全ゲート緑。v0.11 は完了。** 引継書 §4 の4件はすべて閉じ、その先の6件も実施した |
-| 版 | `package.json` / README / OVERVIEW すべて **v0.11.0** に揃った。CHANGELOG のみ 0.9.4 で止まっている |
+| 版 | `package.json` / README / OVERVIEW / CHANGELOG すべて **v0.11.0**。0.11 は **npm パッケージとして配る版**である（D-005） |
 | 文書 | `/workspace/docs/` → `spacta/docs_HUMAN-ONLY/dev/docs/` へ移動し、**git 管理下に入った** |
 
 ```
@@ -46,8 +49,9 @@ verify (livingdoc / starter)  Green, 0 unclassified
 tsc --noEmit                  exit 0
 crosscheck                    14 checks
 harness.selftest              12 assertions
-runtime.serialization         72 assertions
-vendor-sync --check           every copy matches
+runtime.serialization         70 assertions（72 から2件減。エンジンの byte 一致検査が
+                              コピーごと消えた —— 振る舞いの assertion は1件も減っていない）
+smoke-package                 pack → install → 実走、緑
 mutate                        10 killed, 0 survived (exit 0)
 measure                       両方 exit 0
 ```
@@ -98,7 +102,7 @@ tiers: T3 = draft / moderation / pageview / saved / watchlist（5）
 | `feature-internal` が L2 を主張 | ファイル0件の役割は `roleCoverage()` が**検算ごと飛ばしていた**。`perform.ts` 6枚が「主張だけあって検算のない役割」にいた |
 | IO スタブが `data` を捨てる | `serialization` は FAIL、**`crosscheck` は緑** |
 | **`pageview` がサーバの id を採用しない** | **crosscheck 14 checks も serialization 45 assertions も全部素通り。何も捕まえなかった** |
-| `engine/runtime.ts` が `react` を import | **verify 緑、vendor-sync が3コピーへ黙って配った** |
+| `engine/runtime.ts` が `react` を import | **verify 緑、当時の同期スクリプトが3コピーへ黙って配った** |
 | 機能が `shared/source` を import | **verify 緑、exit 0** |
 
 **5つ植えて5つとも見つかった。**
@@ -171,7 +175,7 @@ tempId のまま残る trace は完全に決定論的なので、リプレイは
 
 | 検査 | 守るもの | 設計上の判断 |
 |---|---|---|
-| `engine-portability` | エンジンに `react`/`next` が入らない | **fail-closed** — `shared/spacta/` のうち `react.ts` 以外を全部歩くので、エンジンにファイルが増えたら既定で検査対象 |
+| `engine-portability` | エンジンに `react`/`next` が入らない | **fail-closed** — `react.ts` 以外を全部歩くので、エンジンにファイルが増えたら既定で検査対象。パッケージ化後は **`spacta` 自身の `engine/`** を必ず歩く（利用者の木にコピーが無くても0件走査にならない） |
 | `data-layer-import` | 機能がデータ層を import しない | **`import type` も落とす** — 実行時依存は増えないが、守っているのは参照範囲だから |
 
 `law: "—"` + `severity: "err"` で登録した。片方は1ファイルの設計上の約束、
@@ -294,14 +298,17 @@ AST を歩く検査とは種類が違う。**届かないなら「届かない�
 
 ### 5-5. CHANGELOG に 0.10 / 0.11 を書く
 
-版番号は揃えたが、CHANGELOG は `Unreleased (0.9.4)` で止まっている。
-**「その版が何だったか」の記述は判断を要する**ので版上げとは別作業として残した。
+0.11 のエントリを書き終えた。配布形式の転換（D-005）もその中に入っている。
 
-### 5-6. パッケージ化 — 5-1 と 5-2 の後 [決定]
+### 5-6. パッケージ化 [完了 —— 2026-08-13、D-005]
 
-急がない理由: **アプリ2つ目が「何を配るべきか」を教えてくれる。**
-今決めると `verify` / `engine` / `starter` / `garden` / `metrics` のどこまでが配布物か
-推測で線を引くことになる。`vendor-sync` は不格好だが動いている。
+`npm install spacta` の1パッケージにした。エンジン・検証器・measure・garden・replay ハーネス・
+スキル・Stop フックが同じ版で入り、`vendor-sync.mjs` は削除した。
+**利用者の木にエンジンのコピーは1つも無い**（`starter/src/shared/spacta/` を消し、`shell.tsx` は
+`spacta/react` を import する）。「アプリ2つ目を待つ」という保留理由は取り下げた ——
+待っている間にコピーの腐りを2回踏み、境界は2つ目を待たずに決まったからである。
+配布物から外れたのは `mutate.mjs` と `replay/scenarios.mjs` だけ（参照アプリを相対パスで掴む）。
+守る検査は `tools/smoke-package.mjs`（CI の `package` ジョブ）。
 
 ---
 
@@ -312,7 +319,7 @@ AST を歩く検査とは種類が違う。**届かないなら「届かない�
 | 不変条件 | 守る検査 |
 |---|---|
 | 記録器（`Recorder`）に `State` を持たせない | `harness.selftest` |
-| エンジンのコピーが正本と一致 | `vendor-sync --check` + `runtime.serialization` |
+| エンジンの正本が1つしか無い | **構造で閉じた（D-005）**。配布物が壊れていないことは `smoke-package` |
 | Effect のループを2つ書かない | L4 effect-runtime（部分的） |
 | T3 機能の往復が実際に動く | `runtime.serialization` + **`mutate`** |
 | **エンジンに `react` も `next` も入れない** | **`engine-portability`**（今日追加） |
@@ -327,7 +334,7 @@ AST を歩く検査とは種類が違う。**届かないなら「届かない�
 - **穴があること自体は許される。穴を隠すことは許されない。**
   `NOT guaranteed` 節、`crosscheck` の「(4) は検証不能」、`measure` が推測を拒んで停止すること、
   `mutate` の SURVIVED 行——**この性質を減らす変更をしない**
-- **`spacta/verify` `spacta/starter` `spacta/engine` を触ったら `bun tools/vendor-sync.mjs`**
+- **`spacta/verify` `spacta/starter` `spacta/engine` `package.json` を触ったら `bun tools/smoke-package.mjs`**（`files`/`exports`/`bin` の間違いはここでしか見えない）
 - **作業中に「これも直したい」と思ったものは、実装せずに書き留める**
 
 ---
@@ -338,7 +345,7 @@ AST を歩く検査とは種類が違う。**届かないなら「届かない�
 |---|---|
 | **`.mjs` は型検査されない** | シナリオを足したら、それが本当に狙った経路を通っているか記録で確かめること |
 | **`crosscheck` は再現性しか見ない** | **今日 `mutate` が実測した: 10変異中0殺し。** 振る舞いは `runtime.serialization` に状態 assertion で書く |
-| **vendor コピーは黙って古くなる** | 今日も1件検出した（starter の版上げが vendor 側に未反映） |
+| **コピーは黙って古くなる** | 2回踏んだ末に構造で閉じた（D-005）。**`src/shared/spacta/` を作り直さないこと** —— 作った瞬間に同じ腐り方が戻る |
 | **`git add` の残留** | `git status --porcelain` の第2列を確認してからコミットする |
 | **1要素 union は潰れる** | `assertNever` が書けない。L4 の第2形を使う |
 | **`measure` は推測を拒んで停止する** | 故障ではなく設計。メッセージを読んで `metrics/measure.mjs` を直す |

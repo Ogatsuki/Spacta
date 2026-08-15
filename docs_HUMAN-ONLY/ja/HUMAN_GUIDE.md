@@ -31,11 +31,11 @@ Spactaは機能ごとに、**計算だけをする層（Core）と、外界に�
 
 **前提：** Next.js **App Router**（Pages Routerは対象外）／ React 18以降 ／ TypeScript **`strict: true`**（網羅性チェックが最後の砦になるため実質必須）。データベースは不問です — 取得と永続化はSpactaの管轄外です（§7-1）。
 
-**コマンドの表記：** 以下 `npm run verify` と書くのは `starter/package.json` に定義された `node verify/verify.mjs .` のショートカットです。npmパッケージは未配布なので、starter以外では末尾（「次のステップ」）のコマンドを直接実行してください。
+**コマンドの表記：** 以下 `npm run verify` と書くのは `starter/package.json` に定義された `spacta-verify .` のショートカットです。`npm install spacta` を実行すると `node_modules/.bin` にこのバイナリが入るので、スクリプトを書かなくても `npx spacta-verify .` で動きます。
 
 その他：
 
-- AIに渡す実行ルールは [`SPACTA.md`](../../SPACTA.md)（79行）です。この文書はAIには読ませません。
+- AIに渡す実行ルールは [`SPACTA.md`](../../docs_AI-ONLY/SPACTA.md)（79行）です。この文書はAIには読ませません。
 - 設計判断の背景メモは [α評価](spacta-alpha-evaluation.md) にあります。
 - セットアップは [setup.md](../setup.md)。
 - ベータ版です。未検証の主張が残っています。§7〜§9に記載しました。フィードバックを歓迎します。
@@ -141,8 +141,8 @@ src/
 | **Core** | 純粋ロジック。`init` / `update`。async・fetch・`new Date()` を含まない。どこで実行しても安全 | `features/*/core.ts` |
 | **Perform** | その機能のEffectを実行する。Effect語彙の宣言（`types.ts`）の隣に置く | `features/*/perform.ts` |
 | **Shell** | JSXの配線のみ。状態をpropsへ、操作を `Action` へ。状態は自分で持たない | `features/*/shell.tsx` |
-| **Engine** | Effectキューを直列に回し、`perform` を呼ぶ唯一の場所。結果を必ず `Action` に変換してCoreへ戻す。ドメインの分岐を持たず、ReactもNext.jsも参照しない。**編集する場所ではありません** | `shared/spacta/runtime.ts` |
-| **束縛アダプター** | 状態を保持して再描画を起こし、時刻とIDを採取する。React / Next.js の変化が着地する唯一の場所 | `shared/spacta/react.ts` |
+| **Engine** | Effectキューを直列に回し、`perform` を呼ぶ唯一の場所。結果を必ず `Action` に変換してCoreへ戻す。ドメインの分岐を持たず、ReactもNext.jsも参照しない。**編集する場所ではありません——あなたの木の中のファイルではなく、依存パッケージです** | `spacta/runtime` |
+| **束縛アダプター** | 状態を保持して再描画を起こし、時刻とIDを採取する。React / Next.js の変化が着地する唯一の場所 | `spacta/react` |
 | **Source** | 非決定性の入口。時刻・UUID・DB/APIフェッチ（サーバ側） | `shared/source.ts` |
 | **輸送** | POSTしてJSONを返すだけ。語彙を名指ししない | `shared/runEffect.ts` |
 
@@ -338,7 +338,7 @@ export async function perform(effect: Effect): Promise<{ data?: Answer } | null>
 
 ```tsx
 "use client";
-import { useSpacta } from "@/shared/spacta/react";
+import { useSpacta } from "spacta/react";
 import { CounterActions } from "./components/CounterActions";
 import { CounterSummary } from "./components/CounterSummary";
 import { init, summarize, update } from "./core";
@@ -391,7 +391,7 @@ export function SampleShell({ initData }: { initData: InitData }) {
 
 隔離は、それを信頼できて初めて意味を持ちます。Spactaは「境界は守られているはず」と主張するのではなく、TypeScriptの構文木を歩いて確認します。
 
-**Law（掟）は10本**です。以下は代表的な7本で、**L5・L6・L8はここでは省きます**（L6は検証器自身の検査で後述、L8は情報表示のみ）。全10本は [`SPACTA.md`](../../SPACTA.md) にあります。
+**Law（掟）は10本**です。以下は代表的な7本で、**L5・L6・L8はここでは省きます**（L6は検証器自身の検査で後述、L8は情報表示のみ）。全10本は [`SPACTA.md`](../../docs_AI-ONLY/SPACTA.md) にあります。
 
 | | 内容 |
 |---|---|
@@ -429,15 +429,17 @@ L4に補足があります。網羅的に閉じる形は2つあります。`asse
     ...
   NOT guaranteed by this green:
     - Type integrity (props / contracts)              → run `tsc --noEmit` separately
+    - Statement-level defects (unused, regex, invisible chars) → run ESLint separately
     - Judgement kept out of shell.tsx                 → not checked
     - Effect results actually reaching Core at runtime → partially checked
     - Write-path round trip in features below T3      → not checked
     - Semantic correctness                            → never checked
 ```
 
-緑を根拠に差分を読まずに済ませる前に、この2つのリストを確認してください。特に次の2点です。
+緑を根拠に差分を読まずに済ませる前に、この2つのリストを確認してください。特に次の3点です。
 
 - **型整合は緑に含まれません。** `tsc --noEmit` を別途実行してください（`--tsc` フラグでまとめて実行できます）。
+- **文の「中身」も緑に含まれません。** 掟が読むのはファイルの置き場所と import であって、式の内部ではありません。正規表現に紛れ込んだ NO-BREAK SPACE は、このプロジェクトの全ゲート（verify・cross-check・`mutate`・`tsc`）を素通りしました —— 機能に閉じていて、決定的で、隠れ入力も無いからです。それはまさにゲート側が「正しい」と確認するために作られた性質です。`tsc` と同じように、ESLint を別途走らせてください。
 - **shellに判断が溜まっていないことも緑に含まれません。**
 
 実行時間は57ファイルのプロジェクトで0.8秒、starterで0.25秒です。毎イテレーション実行できる速度です。
@@ -622,7 +624,7 @@ Rustの借用チェッカが価値を持つのは、チェッカ自体ではな�
 
 この不具合は、**verify緑・tsc 0エラー・E2E通過のまま残っていました。** 3つのゲートが同じ一点で同時に検出できていなかったことになります。
 
-対処は検査ではなく構造で行いました。`shared/spacta/runtime.ts` がループの唯一の実装になり、識別子を持たないEffectにも結果を無条件にActionとして返します。**唯一の実装が正しければ、往復は検証する対象ではなくなります。** ただし §7-4 のとおり、`verify` が配線を追跡するようになったわけではありません。
+対処は検査ではなく構造で行いました。エンジン（`spacta/runtime`）がループの唯一の実装になり、識別子を持たないEffectにも結果を無条件にActionとして返します。**唯一の実装が正しければ、往復は検証する対象ではなくなります。** ただし §7-4 のとおり、`verify` が配線を追跡するようになったわけではありません。
 
 以降、エンジンで駆動した全シナリオで (2) は成立しています。同じシナリオを以前の手書きループで走らせると発散します。
 
@@ -652,7 +654,7 @@ Rustの借用チェッカが価値を持つのは、チェッカ自体ではな�
 
 - **道具がLawの30倍ある。** `verify.mjs` 2600行超が `SPACTA.md` 79行を守っています。単一実装・単一著者です
 - **参照アプリが小さい。** 10機能のうち4つはT1で、往復を一度もしません。往復を実証しているのは5機能です
-- **npmパッケージを配布していません。** 現状は `node verify/verify.mjs <projectRoot>` を直接実行します
+- **パッケージが出来たばかりです。** 0.11 から `npm install spacta` で配ります。それ以前はエンジンと検証器を手でコピーしており、2回黙って古くなりました。この導線には版1つ分の実績しかありません
 - **マイナー版で構造が変わります。** 共有 `Effect` union の解体（§2-1）はその例です。**1.0まではこの規模の破壊的変更が起きうると考えてください。** 移行内容はCHANGELOGに記載します
 - **中心命題がサンプル1つでしか測られていません。** 「1機能を追加・変更するのに必要な参照範囲は増えない」を、別ドメインのアプリで確かめる必要があります
 - **`SPACTA.md` だけを渡されたAIが別ドメインのアプリを作れるか**は未検証です
@@ -723,20 +725,20 @@ Spactaを層に分解すると次のようになります。
 ## 次のステップ
 
 * **セットアップ：** [setup.md](../setup.md)
-* **AI向け実行ルール（79行）：** [`SPACTA.md`](../../SPACTA.md)
-* **決着した設計判断と、それを守っている検査：** [`spacta-decisions.md`](../../spacta-decisions.md)
-* **決着していないこと：** [`spacta-open-questions.md`](../../spacta-open-questions.md)
+* **AI向け実行ルール（79行）：** [`SPACTA.md`](../../docs_AI-ONLY/SPACTA.md)
+* **決着した設計判断と、それを守っている検査：** [`spacta-decisions.md`](../../docs_AI-ONLY/spacta-decisions.md)
+* **決着していないこと：** [`spacta-open-questions.md`](../../docs_AI-ONLY/spacta-open-questions.md)
 * **設計メモ（Attention・認知負荷まわり）：** [α評価](spacta-alpha-evaluation.md)
 
-実行方法（npmパッケージは未配布のため直接実行します）：
+実行方法（先に `npm install spacta`。バイナリは `node_modules/.bin` から出てきます）：
 
 ```sh
-node verify/verify.mjs <projectRoot>          # 境界のみ
-node verify/verify.mjs <projectRoot> --tsc    # 境界のあとに型
-node metrics/measure.mjs <projectRoot>        # 共有シンボルの利用範囲を測る
-node garden/garden.mjs <projectRoot>          # 片付け指示書（JSON）を出す
+npx spacta-verify <projectRoot>          # 境界のみ
+npx spacta-verify <projectRoot> --tsc    # 境界のあとに型
+npx spacta-measure <projectRoot>         # 共有シンボルの利用範囲を測る
+npx spacta-garden <projectRoot>          # 片付け指示書（JSON）を出す
 ```
 
-bunでも動作します（`bun verify/verify.mjs <projectRoot>`）。`src/` か `app/` を含むディレクトリを指定してください。それ以外を指すと0件走査になり、緑を名乗らず終了コード2を返します。
+bunでも動作します（`bunx spacta-verify <projectRoot>`）。`src/` か `app/` を含むディレクトリを指定してください。それ以外を指すと0件走査になり、緑を名乗らず終了コード2を返します。
 
 **有用なフィードバックは、「ここが分かりにくい」と「この主張はverifyが実際には確かめていないのでは」の2つです。**

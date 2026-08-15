@@ -1,0 +1,193 @@
+# The gates, run by something other than a person remembering to run them.
+#
+# Until now every check in this repository was invoked by hand. That is not a small gap for a
+# project whose own definition of a Law is "physically enforced via failure": a check that runs
+# when someone thinks of it is Advice with a good reputation. The evidence is already on the
+# record — while the engine and the verifier were copied into adopters by hand, those copies went
+# stale twice (v0.9.x found at v0.10, v0.10 found at v0.11), and both times the tool that would
+# have caught it existed and was not run. The copies are gone (0.11 ships a package); the habit
+# of running gates only when someone remembers is what this file removes.
+#
+# What this file can and cannot cover is worth stating, because a green here must not be read as
+# more than it is:
+#
+#   covered            build, the verifier against its own corpus, measure, garden, the generic
+#                      replay self-test, and the published artifact (packed, installed, used).
+#   covered on request the behavioural gates — cross-check, runtime serialization, mutate. They
+#                      read the reference application, which lives in another repository, so they
+#                      run only where a checkout is available. When it is not, the job says so
+#                      loudly instead of passing quietly.
+#   not covered        semantic correctness. `verify` says so itself on every run.
+
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # The tools are plain ESM over Node built-ins, and the README says they run on
+  # any supported Node. The matrix is what makes that a claim rather than a hope;
+  # `engines.node` in package.json says >=18, so 18 is tested and not assumed.
+  # ─────────────────────────────────────────────────────────────────────────────
+  gates:
+    name: gates (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["18", "20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build the engine
+        run: npm run build
+
+      - name: verify — the laws, against the reference corpus
+        run: npm run verify
+
+      - name: measure — the numbers must be producible
+        run: npm run measure
+
+      - name: garden — the info/warn pass must run to completion
+        run: npm run garden
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # The part of the replay machinery that names no application: it plants
+  # divergences and asserts the cross-check detects them. If this goes red the
+  # cross-check has stopped being able to fail, which is worse than a red gate.
+  #
+  # It runs on bun because `drivers.mjs` imports the engine as TypeScript.
+  # ─────────────────────────────────────────────────────────────────────────────
+  harness:
+    name: replay harness self-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install
+      - name: The cross-check can still detect a planted divergence
+        run: bun replay/harness.selftest.mjs
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # The artifact, not the source tree. Packs, installs into a scratch project, and
+  # then uses the package both ways an adopter will. This is the only gate that can
+  # see a `files` or `exports` mistake: dropping the corpus or the fixtures leaves
+  # every other check in this repository green.
+  # ─────────────────────────────────────────────────────────────────────────────
+  package:
+    name: packaged artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install --no-audit --no-fund
+      - name: Pack, install, and use it
+        run: node tools/smoke-package.mjs
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # The behavioural gates. These read the reference application, so they need a
+  # checkout of it beside this repository — which is exactly the coupling that
+  # kept `replay/` out of the published package.
+  #
+  # Without a token the job does not fail; it reports what was not checked. A gate
+  # that turns red for a missing credential teaches people to ignore red, and a
+  # gate that goes green without running teaches them to trust nothing.
+  # ─────────────────────────────────────────────────────────────────────────────
+  reference-app:
+    name: behavioural gates (reference app)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: spacta
+
+      - name: Is a reference-app checkout available?
+        id: gate
+        env:
+          TOKEN: ${{ secrets.LIVINGDOC_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # `livingdoc` is the directory name every tool in this repository expects beside it —
+      # `replay/scenarios.mjs` and `tools/mutate.mjs` both reach for `../livingdoc`.
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.available == 'true'
+        with:
+          repository: Ogatsuki/living-document
+          token: ${{ secrets.LIVINGDOC_TOKEN }}
+          path: livingdoc
+
+      - uses: oven-sh/setup-bun@v2
+        if: steps.gate.outputs.available == 'true'
+        with:
+          bun-version: latest
+
+      - run: bun install
+        if: steps.gate.outputs.available == 'true'
+        working-directory: spacta
+
+      - name: verify — the laws, against the reference application
+        if: steps.gate.outputs.available == 'true'
+        working-directory: spacta
+        run: bun verify/verify.mjs ../livingdoc
+
+      - name: replay cross-check — a run rebuilds from (initData, actions)
+        if: steps.gate.outputs.available == 'true'
+        working-directory: spacta
+        run: bun replay/crosscheck.mjs
+
+      - name: runtime serialization — what the engine and the features actually do
+        if: steps.gate.outputs.available == 'true'
+        working-directory: spacta
+        run: bun replay/runtime.serialization.test.mjs
+
+      # Exit 1 here is a measurement, not a failure: it means a mutation survived, i.e. a hole
+      # in the gates. It is reported and does not fail the build, because "no gate watched this
+      # break" is a finding to act on, not a reason to block a merge.
+      - name: mutate — which of the gates would notice a broken round trip
+        if: steps.gate.outputs.available == 'true'
+        working-directory: spacta
+        continue-on-error: true
+        run: bun tools/mutate.mjs ../livingdoc
+
+      - name: Say what was not checked
+        if: steps.gate.outputs.available != 'true'
+        run: |
+          {
+            echo "### Behavioural gates: NOT RUN"
+            echo
+            echo "No reference-application checkout was available, so these did not run:"
+            echo
+            echo "- \`replay/crosscheck.mjs\` — that a run rebuilds from \`(initData, actions[])\`"
+            echo "- \`replay/runtime.serialization.test.mjs\` — what the engine and the features do"
+            echo "- \`tools/mutate.mjs\` — which gates notice a broken round trip"
+            echo
+            echo "The other jobs checked structure only. Structure being green says nothing"
+            echo "about behaviour — \`verify\` prints that on every run, and it is true here too."
+            echo
+            echo "To enable: add a \`LIVINGDOC_TOKEN\` secret with read access to the"
+            echo "reference application's repository."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "Behavioural gates did not run — see the job summary."

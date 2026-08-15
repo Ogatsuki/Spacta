@@ -19,7 +19,7 @@
  *      Action 3 and happens to converge again by Action 9 has still broken the claim, and a
  *      final-state check would call it green.
  *   3. Nothing that is compared was ever recorded. The recording holds no State (see
- *      `Recorder` in `shared/spacta/runtime.ts`); the live states come from watching the
+ *      `Recorder` in the engine); the live states come from watching the
  *      production path compute them, the replay states from recomputing them.
  *
  * Tool side, not application side: this lives here rather than under `livingdoc/src/**` because
@@ -281,7 +281,7 @@ export const NOT_CHECKED = [
   "    and re-render timing are outside what these runs exercise.",
 ];
 
-export function printNotChecked() {
-  console.log("\nWhat this cross-check does NOT verify:");
-  for (const line of NOT_CHECKED) console.log(`  ${line}`);
+export function printNotChecked(log = console.log) {
+  log("\nWhat this cross-check does NOT verify:");
+  for (const line of NOT_CHECKED) log(`  ${line}`);
 }

@@ -1,0 +1,19 @@
+{
+  "description": "Spacta — a turn that changed governed source cannot end on a red verify",
+  "//": "One hook, deliberately. A PostToolUse hook firing after every Edit would run a whole AST walk per keystroke-sized change, and a SessionStart staleness check stopped being needed once the engine and verifier became an installed package rather than hand-copied files. Stop is where the cost is paid once and the feedback still arrives before the human reads the answer.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": ["${CLAUDE_PLUGIN_ROOT}/hooks/verify-on-stop.mjs"],
+            "timeout": 180,
+            "statusMessage": "Spacta: checking the laws"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -4,7 +4,7 @@
 
 Welcome to Spacta.
 This is Spacta's human-facing guide.
-For the rules actually handed to the AI, see [SPACTA.md](../SPACTA.md).
+For the rules actually handed to the AI, see [SPACTA.md](../docs_AI-ONLY/SPACTA.md).
 For more detail on the concepts used in this file, see [docs_HUMAN-ONLY/spacta-alpha-evaluation.md](spacta-alpha-evaluation.md).
 
 ---

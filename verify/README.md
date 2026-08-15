@@ -34,7 +34,7 @@ The table below is **generated from the `CHECKS` registry** in `verify.mjs` — 
 | L9 | `presentation-behaviour` | err | (role pass) | role `component` or role `shared-ui` | Components and shared/ui perform no IO and no non-determinism | per file |
 | L10 | `component-statelessness` | err | (role pass) | role `component` | Feature components are pure functions of their props | per file |
 | L8 | `presentation-purity` | info | (role pass) | role `shell` or role `component` | — | per file |
-| — | `engine-portability` | err | `src/shared/spacta/` | `/\.tsx?$/` or `/(^\|\/)react\.ts$/` | The engine names no UI framework, so it is still the unit that ports | per file |
+| — | `engine-portability` | err | `src/shared/spacta/`, `<spacta>/engine/` | `/\.tsx?$/` or `/(^\|\/)react\.ts$/` | The engine names no UI framework, so it is still the unit that ports | per file |
 | — | `data-layer-import` | err | `src/features/` | `/\.(ts\|tsx)$/` | No feature imports the data layer — data arrives as InitData | per file |
 | — | `clone` | info | (role pass) | role `shell` or role `component` | — | batch |
 | — | `export-ownership` | info | `src/features/` | `/(^\|\/)types\.ts$/` | — | batch |
@@ -142,6 +142,17 @@ Its goal is threefold: align typography and layouts to semantic tokens, restrict
 
 ## Usage
 
+An adopter does not hold a copy of this directory. `npm install spacta` puts it in
+`node_modules/spacta/verify/` and exposes it as a binary — the verifier that runs is the one that
+shipped with the engine the app imports, which is the whole reason the package exists:
+
+```sh
+npx spacta-verify .          # the same file as below, resolved out of node_modules
+npx spacta-verify . --tsc
+```
+
+The forms below are how this repository runs it against its own trees.
+
 ```sh
 # Running verify on a root directory (resolves typescript dependency from the target project):
 node verify/verify.mjs <projectRoot>
@@ -206,7 +217,8 @@ verify/
   platform/
     nextjs.mjs               Framework filenames -> roles, and what enforcement each role receives.
                              The only file in the verifier that knows Next.js exists. Form, not Law:
-                             a project edits it when its Form changes (setup.md step 5). It cannot be
+                             a project edits it when its Form changes (setup.md, "Customizing the
+                             Form"). It cannot be
                              swapped at runtime from user config — that would hollow out L6.
   fixtures/
     bad-core.core.ts         L2: Contains new Date/await/prisma/fetch (should be rejected)

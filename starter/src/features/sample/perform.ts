@@ -7,7 +7,7 @@
  * POST and nothing about what is being posted — mechanism, not vocabulary. The test is whether
  * adding a feature changes it, and `post` does not.
  *
- * Do not call this yourself. The engine in `shared/spacta` is its only caller, and it turns
+ * Do not call this yourself. The engine in the `spacta` package is its only caller, and it turns
  * every outcome into an Action — success, failure, and the answer to an Effect that asked for
  * nothing. That is what makes the round trip something built rather than something to remember.
  *

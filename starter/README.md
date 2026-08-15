@@ -2,11 +2,16 @@
 
 A minimal project template measured and confirmed to be **100% compliant** under `npm run verify`.
 It serves as the default reference template to jump-start Phase 0 bootstrap and prevent development drift. It represents the default *Form* described in `SPACTA.md` §2.
-The bundled `../verify/verify.mjs` operates assuming this structure:
+`spacta-verify` operates assuming this structure:
 `app/layout.tsx` + `src/shared/{ui,runEffect,source}` + `src/features/<name>/{types,core,perform,shell,components}` + `app/**/page.tsx`.
 
-> **The purpose of this starter is to prevent developers and AIs from writing verification tooling from scratch.** A finished verifier is pre-bundled in the `verify/` directory.
+> **The purpose of this starter is to prevent developers and AIs from writing verification tooling from scratch.** A finished verifier arrives with `npm install spacta` and runs as `npx spacta-verify`.
 > Your focus should be on implementing features, not reinventing AST validation scripts (`SPACTA.md` §0/§3).
+>
+> **Nothing here is a copy of the engine.** `shell.tsx` imports `useSpacta` from `spacta/react`,
+> the way any dependency is imported. Earlier versions shipped the engine's TypeScript source
+> inside `src/shared/spacta/` and every adopter carried their own copy of it; those copies went
+> silently stale twice, which is why the package exists.
 
 ## What's Inside (Minimal examples satisfying each law)
 
@@ -29,7 +34,7 @@ Key points that trip up new AIs:
 - **Do not generate time inside Core.** `source.readNow()` reads it at the edge, and passes it as `InitData.now` (L3).
   Writing `new Date()` in `core.ts` flags red under L2 (Purity). Writing it in `page.tsx` flags red under L5 (Source Purity). Put it in the edge (`source.ts`/`shell.tsx`).
 - **An Effect switch belongs in the feature's own `perform.ts`.** Writing a handwritten switch on `effect.type` in `shell.tsx` flags red under L4 (Exhaustiveness). Do not put one back in `shared/runEffect.ts` either: a shared switch makes one feature's vocabulary everybody's dependency, which is exactly what declaring `Effect` per feature removed.
-- **Never write your own effect loop.** `useSpacta` hands the queue to the engine in `shared/spacta`, which is the only caller of `perform` and turns *every* outcome into an Action — including the answer to an Effect that asked for nothing. A loop written twice is a loop that disagrees with itself.
+- **Never write your own effect loop.** `useSpacta` hands the queue to the engine in the `spacta` package, which is the only caller of `perform` and turns *every* outcome into an Action — including the answer to an Effect that asked for nothing. A loop written twice is a loop that disagrees with itself.
 - **There is one channel for an answer, and the feature names its shape.** Declare `Answer` in your own `types.ts`, pass it as the fourth argument to `useSpacta`, and it arrives as `action.data` on `EFFECT_SUCCEEDED`. A server-assigned id and a page of rows travel the same way — do not add a second field for one of them.
 - **Cross-feature imports are restricted.** Importing the internals of an adjacent feature flags red under L1 (Isolation). Always go through `@/shared` or stay local to the feature.
 - **Raise common frames and vocabulary.** Extract common layouts and layout-agnostic presentation vocabulary. Feature-specific look-and-feel should be confined within `components/`.
@@ -39,20 +44,21 @@ Key points that trip up new AIs:
 ## Usage (Phase 0 Bootstrap)
 
 ```sh
-# 1) Copy this starter template and the verify/ folder to the root of your new project
-cp -r Spacta/starter/*  myapp/
-cp -r Spacta/verify     myapp/verify
+# 1) Copy the application shape — and only that. There is no verify/ or garden/ to carry.
+cp -r node_modules/spacta/starter/{app,src,tailwind.config.ts,tsconfig.json} myapp/
 
-# 2) Install the framework and dependencies
-cd myapp && npm install        # typescript, tailwindcss, and tailwind-variants are pre-configured.
+# 2) Install. The engine and the verifier arrive together, at one version.
+cd myapp && npm install spacta          # then typescript, tailwindcss, tailwind-variants
 
-# 3) Run the verifier (runs with zero dependencies for Spacta laws)
-npm run verify                 # Runs L1–L10 checks, including the L6 self-test.
-npm run verify:tsc             # Finally, verify TypeScript types via tsc --noEmit.
+# 3) Run the verifier out of node_modules
+npx spacta-verify .            # Runs L1–L10 checks, including the L6 self-test.
+npx spacta-verify . --tsc      # Finally, verify TypeScript types via tsc --noEmit.
 ```
 
-> `npm run verify` (without `--tsc`) runs successfully using **only TypeScript** as a parser. React/Next.js types are only required when running the type checker (`--tsc`).
+> `spacta-verify` (without `--tsc`) runs successfully using **only TypeScript** as a parser. React/Next.js types are only required when running the type checker (`--tsc`).
 > Enforce `npm run verify` as a gate in CI (pre-commit / GitHub Actions) to prevent design drift (`SPACTA.md` §3.4).
+> The full bootstrap, including the agent-facing half (`npx spacta-init`), is in
+> [`docs_HUMAN-ONLY/setup.md`](../docs_HUMAN-ONLY/setup.md).
 
 ## Adding Features
 

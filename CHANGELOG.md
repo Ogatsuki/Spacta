@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.12 — The package carries what machines read
+
+0.11 made Spacta installable. This asks the question that answer left open: **who reads each of
+these files, and from which tree?**
+
+The tarball and the repository are not the same directory, and until now the documents did not
+know it. `README.md` reached the guides, the setup page, the decision log and the open questions
+by relative path — right on GitHub, four dead links the moment the same file is opened in
+`node_modules/spacta/`. The verifier said it out loud on a bad day: *"fix the Form, see
+`docs_HUMAN-ONLY/setup.md`"* — a directory `files` has never carried — printed at the one moment
+the reader most needs it to be there.
+
+One rule closes the whole class:
+
+> **The package carries the documents a machine reads, plus the two npm always shows a human
+> (README and LICENCE). Everything a person reads at leisure lives in the repository.**
+
+This is the convention, not a departure from it. Surveyed the packages an adopter already has
+installed — react, react-dom, next, typescript, eslint, `@eslint/js`, typescript-eslint,
+tailwindcss — and **all eight ship README and LICENSE and nothing else.**
+
+### Breaking
+
+- **`CHANGELOG.md`, `verify/README.md` and `starter/README.md` are no longer published.** 80kB of
+  prose for people, none of it reachable from anything the package installs. They are in the
+  repository, and `README.md` links to each by absolute URL. A project reading them out of
+  `node_modules/` was reading a copy that goes a version stale the moment it is installed.
+- **The third L6 line changes in an installed copy.** `verify/README.md` holds the check table
+  the docs-drift check compares against, so an installed verifier has nothing to compare and now
+  prints *"check table drift not verified: … not published, so this line is expected in an
+  installed copy"* instead of the green line. What it protected — the table not drifting from the
+  `CHECKS` registry — is a property of this repository's documentation, and it is still checked
+  here, in CI. **The check did not weaken; it went back to the tree it was about.** `smoke-package`
+  asserts the verifier *says* it did not check, because an absent line and a passing line look the
+  same from outside.
+
+### Added
+
+- **`smoke-package` walks every document in the installed package** and fails on a relative link
+  with nothing behind it. Planted one and watched it fall, by name. Prose may still mention an
+  unshipped path — a link is a promise that a path resolves, a sentence is not — so the gate reads
+  links, not mentions.
+- **`README.md` says what lands in `node_modules/spacta/`**, which is the question an installed
+  reader actually has and the repository layout does not answer.
+
+### Changed
+
+- **The two audience sections became one `Documentation` section.** It names the single installed
+  document (`SPACTA.md`) and sends everything else to the repository, with a table of what is
+  where. The previous split — "FOR AI DEVELOPERS" / "FOR HUMAN DEVELOPERS" — described the
+  repository, and the file it lives in is read most often from npm.
+- **Pointers printed by the tools name the repository, not a path.** `verify`'s Form-customisation
+  message and `verify/platform/nextjs.mjs` both link to `github.com/Ogatsuki/Spacta`.
+
 ## 0.11 — A feature's vocabulary goes back to the feature
 
 **Zero new Laws.** `SPACTA.md` still holds ten, and the reference app's `shared/types.ts` went
@@ -49,8 +103,10 @@ the coupling look managed.
   `shared/types.ts`. Features now declare `Answer` themselves and read `action.data`; the five
   that never read a key say so by declaring nothing and returning `Promise<null>`, a shape that
   could not previously be written down.
-- **Two blocking checks that are not Laws.** A project with `react` or `next` under
-  `shared/spacta/`, or a feature importing the data layer, turns red on upgrade. See *Added*.
+- **Two blocking checks that are not Laws.** `react` or `next` named inside the engine, or a
+  feature importing the data layer, turns red on upgrade. `engine-portability` walks the
+  `spacta` package's own `engine/` — which ships, so it is present wherever the verifier runs —
+  and a project's `src/shared/spacta/` as well, if it still hand-carries one. See *Added*.
 - **`measure` gained a `readModel` zone, so the numbers discontinue here by design.**
   `contract` drops 195 → 37 for livingdoc and a key appears that earlier snapshots do not have.
   Nothing reads `metrics/baseline/*.json`, so no gate breaks; the older records describe a
@@ -65,6 +121,45 @@ the coupling look managed.
   correctly narrowed"* are otherwise indistinguishable.
 
 ### Added
+
+- **The instructions and the enforcement install into the harness.** `npx spacta-init` writes
+  `.claude/skills/spacta/` and `.claude/hooks/spacta-verify-on-stop.mjs` into a project, and
+  prints the Stop-hook settings entry (`--write-settings` merges it, after a backup). Only the
+  skill's `description` sits in context; its body loads when `features/`, `shared/` or the app
+  router is touched, and the reference files load only when the body sends the agent to them.
+  Both are written by the package rather than tracked separately, because the skill describes
+  the Laws the *installed* verifier enforces — a skill one minor version out from its tool is
+  worse than no skill, since it is confidently wrong. **Re-run it after upgrading.**
+
+  `SPACTA.md` §4-5 says "run `verify` yourself and fix all errors until green", which by
+  Spacta's own trust hierarchy is *Advice*. The Stop hook makes a turn unable to end on a red
+  one. **It is not a Law**: it binds sessions in that harness with that hook installed and
+  nothing else — human commits and other agents pass straight through. The Law is CI. This is
+  the same check moved to where fixing it costs one edit.
+
+- **The documents learn which tree they are being read from.** The tarball is not the
+  repository, and until now the prose did not know it: `README.md` reached the guides, the setup
+  page, the decision log and the open questions by relative path — right on GitHub, four dead
+  links the moment the same file is opened in `node_modules/spacta/`. The verifier made the same
+  mistake out loud, printing *"fix the Form, see `docs_HUMAN-ONLY/setup.md`"* — a directory
+  `files` has never carried — at the exact moment a reader needs it to be there. One rule now
+  covers both readings: **a relative link may name only something that ships; everything else is
+  an absolute URL.** Prose may still mention an unshipped path, because a link is a promise that
+  a path resolves and a sentence is not. `README.md` also gained the table of what actually lands
+  in `node_modules/spacta/`, which is the question an installed reader has and the repository
+  layout does not answer.
+
+  Enforced, not asserted: `smoke-package` walks every document in the installed package and fails
+  on a relative link with nothing behind it. Planted one and watched it fall, by name.
+- **`tools/smoke-package.mjs` checks the artifact rather than the source tree.** It packs,
+  installs the tarball into a scratch project that has never seen this repository, and then uses
+  it both ways an adopter will: importing the engine, and running the CLIs. It is the only gate
+  that can see a `files` or `exports` mistake — a corpus that did not ship leaves the L6 wiring
+  test with nothing to measure against, and every other check in the repository stays green.
+
+- **`.github/workflows/ci.yml`.** Until now every check here was invoked by a person remembering
+  to invoke it, which for a project whose definition of a Law is "physically enforced via
+  failure" made its own gates Advice with a good reputation.
 
 - **An Effect may answer with data, not only an id.** `R` threads an answer shape from the
   feature, through the engine, into the outcome Action; the engine does not look inside it, just
@@ -98,9 +193,10 @@ the coupling look managed.
 - **`engine-portability` and `data-layer-import`** (`law: "—"`, `severity: "err"`) — the first
   blocking checks that are not Laws. Both properties were held up by prose alone, both were
   planted, and both went straight through: `react` added to `engine/runtime.ts` left `verify`
-  green on both corpora and `vendor-sync` copied it to three places without a word; a feature
-  importing `shared/source` left `verify` green at exit 0, when the only way to know was a `grep`
-  somebody remembered to run.
+  green on both corpora and the sync script of the day copied it to three places without a word;
+  a feature importing `shared/source` left `verify` green at exit 0, when the only way to know
+  was a `grep` somebody remembered to run. `engine-portability` walks the package's own
+  `engine/` — the copies it was first written against no longer exist.
 
   Neither is an eleventh Law — one is a design promise made by a single file, the other is a
   sentence `SPACTA.md` §3 already asserts as fact. They print on their own line so a green cannot
@@ -111,20 +207,40 @@ the coupling look managed.
   ✓ Blocking checks that are not Laws (engine-portability, data-layer-import): No violations
   ```
 
-  `engine-portability` **fails closed**: it walks everything under `shared/spacta/` except
-  `react.ts`, so a new engine file is covered the day it appears rather than the day someone
-  remembers to list it. `data-layer-import` **rejects `import type` too** — a type-only import
+  `engine-portability` **fails closed**: it walks this package's own `engine/` — plus a project's
+  `src/shared/spacta/`, if it still hand-carries one — and excludes nothing but `react.ts`, so a
+  new engine file is covered the day it appears rather than the day someone remembers to list it.
+  Rooting it in the package is what keeps that true after the copies went away: an adopter with
+  no engine in their tree would otherwise walk zero files and be told there were no violations. `data-layer-import` **rejects `import type` too** — a type-only import
   vanishes at compile time, which is exactly why this went unnoticed; what it costs is a reader
   sent into `shared/source` to understand `saved/types.ts`, and that reference range is what the
   check is standing in for.
-- **`engine/` is the source, and `tools/vendor-sync.mjs` applies it.** The engine existed in
-  three places with no source among them, held together by a byte-identity assertion that
-  catches a divergence after the fact and cannot say which copy was right. The assertion now
-  compares against `engine/`, so the repair has a direction, and `--check` exits 1 on a stale
-  copy. It covers the vendored verifier and corpus too — the larger duplication the engine's
-  third copy was a symptom of: `livingdoc/verify/` is 35 files that 0.10 found still on v0.9.x,
-  missing L3, L9, L10 and roles, gone stale with no signal at all. **Vendoring is the author's
-  decision for now; a package would replace all of this and is deferred, not refused.**
+- **`spacta` is an npm package, and the copies are gone.** The engine existed in three places
+  with no source among them, held together by a byte-identity assertion that catches a
+  divergence after the fact and cannot say which copy was right. Half of this release was spent
+  giving that assertion a direction (`engine/` became the source) before concluding that the
+  copies were the problem. `npm install spacta` now brings the engine (`spacta/runtime`,
+  `spacta/react`), the verifier, `measure`, `garden`, the replay harness, the skill and the Stop
+  hook — **one package, one version.** The engine and the verifier are two halves of one
+  contract: `verify/fixtures/` encodes the shape `engine/` produces, so letting them drift apart
+  at the version level would reintroduce exactly the staleness this ends. `tools/vendor-sync.mjs`
+  is deleted, and `starter/src/shared/spacta/` with it — the starter imports `spacta/react` like
+  any other dependency. The record it closes: `livingdoc/verify/` was 35 files that 0.10 found
+  still on v0.9.x, missing L3, L9, L10 and roles, gone stale with no signal at all.
+- **A tenth line under `NOT guaranteed by this green`: statement-level defects.** Measured, not
+  supposed. A NO-BREAK SPACE sat inside `normalizeQuote`'s `[\s ]` — the function `POST
+  /api/traces` and Core both call so that a stored `quote_key` and a grouping key cannot
+  disagree — and **every gate this project owns passed it**: the Laws read placement and
+  imports, the cross-check replays a deterministic run faithfully whether it is right or wrong,
+  `mutate` breaks round trips and not regex literals, and `tsc` sees a valid string. It is
+  harmless (JavaScript's `\s` already matches U+00A0), which is the only reason it is a footnote
+  and not an incident: a defect that satisfies all three of the central claim's conditions —
+  local, reproducible from `(initData, actions[])`, no hidden input — is exactly the shape those
+  conditions cannot see. ESLint's default recommended set caught it with no plugin. The line
+  points there the same way the first line points at `tsc`; **the Laws are still ten**, and a
+  linter is not one of them, for the reason `SPACTA.md`'s own hierarchy gives: a rule that
+  `// eslint-disable-next-line` can switch off is not physically enforced, and therefore is
+  Advice — which is the layer that actually wants an escape hatch with a reason attached.
 - **`SPACTA.md` §3 — Scope.** Three facts an adopter previously had to find by reading the
   source: fetching and persistence are not Spacta's and two features reading the same table are
   coupled where no Law looks (`measure`'s `spread` keeps that hole countable); an Effect brings
@@ -137,9 +253,11 @@ the coupling look managed.
 
 ### Changed
 
-- **`runtime.serialization`: 45 → 48 → 72 assertions.** The middle step is `pageview` adopting
-  the id the database assigns; the last is what `mutate`'s five survivors should have been
-  failing against all along. `draft`'s late answer is the one worth reading: a save leaves with a
+- **`runtime.serialization`: 45 → 48 → 72 assertions, and 70 at the end of the release.** The
+  middle step is `pageview` adopting the id the database assigns; the third is what `mutate`'s
+  five survivors should have been failing against all along. The two it gives back are the
+  byte-identity checks over the engine and its copies — they left with the copies, and no
+  behavioural assertion left with them. `draft`'s late answer is the one worth reading: a save leaves with a
   snapshot, the reader keeps typing while it is away, and the answer confirms *the snapshot that
   was sent*. Marking the newer text clean would claim the server holds something it has never
   seen, and the screen would then stop offering to save it. The comment in `draft/types.ts`
@@ -187,13 +305,12 @@ the coupling look managed.
 - **`crosscheck` kills nothing, and now that is measured rather than asserted.** It establishes
   reproducibility, not correctness. Behaviour goes in `runtime.serialization` as state
   assertions.
-- **Nothing has run.** `verify`, `tsc`, the cross-check and the serialization test all execute the
-  engine and five features' `core.ts`. Every `shell.tsx`, every `components/`, the contents of
-  every `perform.ts`, every `route.ts` and all of `queries.ts` — the SQL included — have never
-  been executed by anything. This is the largest open item at 0.11 and it is not a design
-  question.
-- **No package.** `npm create` does not work; `starter/` has no `node_modules`. Deferred until a
-  second application says what should actually be distributed.
+- **The package has one release behind it.** `npm install spacta` is checked by
+  `tools/smoke-package.mjs` — packed, installed into a scratch project, and used both ways an
+  adopter will — but no second application has adopted it yet, so what should be distributed is
+  answered by argument rather than by a second data point. `starter/` ships inside the tarball
+  because the L6 wiring test needs a reference corpus wherever the verifier runs; whether that
+  is the right call is the open part.
 - **Coupling through data is untouched** and remains the largest known gap, as it has since 0.9.4.
 
 ## 0.10 — One runtime, and a claim that can be measured

@@ -1,19 +1,153 @@
 {
   "name": "spacta",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Spacta — Pure-boundary architecture physically enforced by AST static verification",
-  "private": true,
+  "keywords": [
+    "architecture",
+    "verification",
+    "ast",
+    "purity",
+    "effects",
+    "state-machine",
+    "nextjs",
+    "react"
+  ],
+  "homepage": "https://github.com/Ogatsuki/Spacta#readme",
+  "bugs": "https://github.com/Ogatsuki/Spacta/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ogatsuki/Spacta.git"
+  },
+  "license": "MIT",
+  "author": "Ogatsuki",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "//exports": [
+    "Two entry points, because the engine is two things and only one of them knows what React is.",
+    "`spacta/runtime` names no UI framework — that is the property `engine-portability` checks,",
+    "and shipping it as its own entry point is what makes the claim usable rather than merely",
+    "true. `spacta/react` is the binding adapter. An adopter on another view layer imports the",
+    "first and writes their own second.",
+    "The `.ts` source ships alongside `dist/` as the readable half — it is what an adopter opens",
+    "and what `engine-portability` walks; consumers get the compiled copy so nothing has to be",
+    "transpiled out of node_modules."
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "default": "./dist/runtime.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
+    "./replay": "./replay/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "//bin": [
+    "Three tools ship, and one deliberately does not. `verify`, `measure` and `garden` each take",
+    "a target path and read nothing but that target and this package — they work on anybody's",
+    "app. `tools/mutate.mjs` drives `replay/`, whose scenarios import the reference application",
+    "by relative path, so it measures this repository's gates and not an adopter's. Shipping it",
+    "would be shipping a tool that cannot run where it lands."
+  ],
+  "bin": {
+    "spacta-verify": "verify/verify.mjs",
+    "spacta-measure": "metrics/measure.mjs",
+    "spacta-garden": "garden/garden.mjs",
+    "spacta-init": "tools/init.mjs"
+  },
+  "//files-replay": [
+    "Named one by one rather than shipping `replay/` whole, and the line between them is the",
+    "point. These four name no application. The ones left behind — scenarios.mjs, crosscheck.mjs",
+    "and the two test files — import the reference app by relative path, so publishing them would",
+    "be publishing code that cannot run where it lands."
+  ],
+  "//files-docs": [
+    "One rule, and it removes a whole class of broken link: **the package carries documents that",
+    "are read by machines, plus the two npm always shows a human — README and LICENCE. Nothing",
+    "else.** Everything a person reads at leisure lives in the repository, and the package points",
+    "there with an absolute URL rather than shipping a copy.",
+    "What that leaves in: `docs_AI-ONLY/SPACTA.md` (SKILL.md sends the agent to it by path),",
+    "`skills/**` and `garden/GARDENER.md` (the agent is told to read them by the tools' output).",
+    "What it takes out: CHANGELOG.md, verify/README.md and starter/README.md — prose for people,",
+    "80kB of it, none of it reachable from anything the package installs.",
+    "The rule is not a preference. The repository and the tarball are different trees, so a",
+    "relative link written in one is a dead link in the other; shipping only what the machines",
+    "read means there is almost nothing left that could hold such a link, and what remains is",
+    "checked — `tools/smoke-package.mjs` walks every installed document and fails on a relative",
+    "link with nothing behind it. Surveyed eight packages an adopter already has installed",
+    "(react, react-dom, next, typescript, eslint, @eslint/js, typescript-eslint, tailwindcss):",
+    "all eight ship README and LICENSE and nothing else. This is the convention, not a departure."
+  ],
+  "files": [
+    "engine",
+    "dist",
+    "verify",
+    "!verify/README.md",
+    "starter",
+    "!starter/garden-report.json",
+    "!starter/README.md",
+    "replay/index.mjs",
+    "replay/runner.mjs",
+    "replay/harness.mjs",
+    "replay/drivers.mjs",
+    "garden",
+    "metrics/measure.mjs",
+    "skills",
+    "hooks",
+    "tools/init.mjs",
+    ".claude-plugin",
+    "docs_AI-ONLY/SPACTA.md",
+    "README.md",
+    "LICENCE"
+  ],
+  "//peerDependencies": [
+    "Both are optional, and for different reasons. `react` is needed only by `spacta/react`;",
+    "an adopter using the engine alone never resolves it. `typescript` is needed only by the",
+    "CLIs, which parse the target's AST — `verify.mjs` resolves it from the target project",
+    "first and from this package second, so a normal TypeScript app already satisfies it and",
+    "declaring it a hard dependency would put a compiler in every consumer's production tree."
+  ],
+  "peerDependencies": {
+    "react": ">=18",
+    "typescript": ">=5"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
+  },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "//ci": "What CI runs that needs nothing beside this repository. The behavioural gates are not here: they read the reference application, so they live in `replay` and `mutate` and run only where a checkout of it exists.",
+    "ci": "npm run build && npm run verify && npm run measure && npm run garden && node tools/smoke-package.mjs",
+    "smoke": "node tools/smoke-package.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run verify:starter",
     "verify": "node verify/verify.mjs starter",
     "verify:starter": "node verify/verify.mjs starter",
     "garden": "node garden/garden.mjs starter",
     "measure": "node metrics/measure.mjs starter",
     "measure:starter": "node metrics/measure.mjs starter",
     "measure:livingdoc": "node metrics/measure.mjs ../livingdoc",
-    "vendor:sync": "node tools/vendor-sync.mjs",
-    "vendor:check": "node tools/vendor-sync.mjs --check"
+    "mutate": "node tools/mutate.mjs ../livingdoc",
+    "//replay": "Needs a TypeScript-capable runtime (bun, deno, or node with type stripping): the scenarios import the reference app's core.ts directly. It also needs the engine built, because the harness drives dist/ rather than a copy of the source.",
+    "replay": "npm run build && node replay/crosscheck.mjs && node replay/runtime.serialization.test.mjs && node replay/harness.selftest.mjs"
   },
   "devDependencies": {
+    "@types/react": "^19",
     "typescript": "^5"
   }
 }
