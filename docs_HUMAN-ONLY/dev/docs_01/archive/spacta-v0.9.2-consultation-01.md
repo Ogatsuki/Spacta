@@ -254,7 +254,7 @@ shell.tsx:26   drain: 失敗しても次の effect へ進む
 
 ```markdown
 ## FOR HUMAN DEVELOPERS
-**[docs_HUMAN-ONLY/HUMAN_GUIDE.md](docs_HUMAN-ONLY/HUMAN_GUIDE.md)**
+**[docs_HUMAN-ONLY/HUMAN_GUIDE.md](../../../HUMAN_GUIDE.md)**
 ```
 
 このリンク先は**削除予定のアーカイブ**であり、撤回済みの過大主張 (「緑なら境界は保たれています」) を含み、L8/L9/L10 への言及が 0 件である。**リンクを正本へ張り替える処置は済ませた** (削除予定のファイルを指したままにはできないため)。

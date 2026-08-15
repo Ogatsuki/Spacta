@@ -136,12 +136,13 @@ about behaviour, and a CI badge that implies otherwise is worse than no badge.
 
 ## FOR AI DEVELOPERS
 
-If you're an AI agent, read only the rulebook below.
+If you're an AI agent, read only the rulebook below. It lives under `docs_AI-ONLY/` — the
+directory name is the whole instruction — so it stays reachable without a route through this
+README.
 
-**[SPACTA.md](SPACTA.md)**
-**[spacta-decisions.md](spacta-decisions.md)**
-**[spacta-open-questions.md](spacta-open-questions.md)**
-****
+**[docs_AI-ONLY/SPACTA.md](docs_AI-ONLY/SPACTA.md)**
+**[docs_AI-ONLY/spacta-decisions.md](docs_AI-ONLY/spacta-decisions.md)**
+**[docs_AI-ONLY/spacta-open-questions.md](docs_AI-ONLY/spacta-open-questions.md)**
 
 *Note: Do not read `docs_HUMAN-ONLY/` unless explicitly instructed, as it contains human-centric prose that may pollute your attention context.*
 
@@ -149,11 +150,20 @@ If you're an AI agent, read only the rulebook below.
 
 ## FOR HUMAN DEVELOPERS
 
+what Spacta is, and what a green `verify` does and does not mean:
+
+**[docs_HUMAN-ONLY/OVERVIEW.md](docs_HUMAN-ONLY/OVERVIEW.md)**
+
 philosophical background:
 
 **[docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md](docs_HUMAN-ONLY/ja/HUMAN_GUIDE.md)** (Japanese)
 
 **[docs_HUMAN-ONLY/HUMAN_GUIDE.md](docs_HUMAN-ONLY/HUMAN_GUIDE.md)** (English)
+
+release history (kept at the package root — `CHANGELOG.md` is the one file in this split that
+follows npm/GitHub convention rather than the human/AI split):
+
+**[CHANGELOG.md](CHANGELOG.md)**
 
 To bootstrap a new Spacta project from scratch:
 

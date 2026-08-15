@@ -86,9 +86,9 @@
     "hooks",
     "tools/init.mjs",
     ".claude-plugin",
-    "SPACTA.md",
-    "spacta-decisions.md",
-    "spacta-open-questions.md",
+    "docs_AI-ONLY/SPACTA.md",
+    "docs_AI-ONLY/spacta-decisions.md",
+    "docs_AI-ONLY/spacta-open-questions.md",
     "CHANGELOG.md",
     "README.md",
     "LICENCE"

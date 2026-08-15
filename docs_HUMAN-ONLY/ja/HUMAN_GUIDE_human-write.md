@@ -4,7 +4,7 @@
 
 Spactaへようこそ。
 これはSpactaの人間用ガイドです。
-実際にAIに渡されるルールは[SPACTA.md](SPACTA.md)を参照してください。
+実際にAIに渡されるルールは[SPACTA.md](../../docs_AI-ONLY/SPACTA.md)を参照してください。
 このファイルで使用している概念の詳細は、[docs_HUMAN-ONLY/ja/spacta-alpha-evaluation.md][docs_HUMAN-ONLY/ja/spacta-alpha-evaluation.md]を参照してください。
 
 ---

@@ -8,7 +8,7 @@ This document gathers insights concerning Spacta, Next.js, and generative-AI-fri
 
 - This document gathers insights, observations, history, and context concerning generative AI.
 - It is not static; it is updated continuously as insights are found or discarded, and kept current at all times.
-- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in [docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md](docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md).
+- Version-dependent histories, expired assumptions, and rejected decisions are out of scope for this document. They reside in [docs_HUMAN-ONLY/spacta-alpha-evaluation-archive.md](spacta-alpha-evaluation-archive.md).
 
 Tags are attached to individual statements throughout this document. (Tagging is the author's own judgment call.)
 
@@ -20,9 +20,9 @@ Tags are attached to individual statements throughout this document. (Tagging is
 
 ---
 
-## α1. About the [SPACTA.md](SPACTA.md) File
+## α1. About the [SPACTA.md](../docs_AI-ONLY/SPACTA.md) File
 
-- [SPACTA.md](SPACTA.md) must stay lightweight. It's the file every AI responsible for implementation has to read on every task. Ten extra lines here means that much extra reading and compliance cost imposed on every single AI. In terms of how often and how broadly it's read, it's the project's central "trunk," and bloat here degrades the effectiveness of every developer (AI). Keeping this file lean should therefore be treated as high priority. `[Established]`
+- [SPACTA.md](../docs_AI-ONLY/SPACTA.md) must stay lightweight. It's the file every AI responsible for implementation has to read on every task. Ten extra lines here means that much extra reading and compliance cost imposed on every single AI. In terms of how often and how broadly it's read, it's the project's central "trunk," and bloat here degrades the effectiveness of every developer (AI). Keeping this file lean should therefore be treated as high priority. `[Established]`
   - For Opus/Sonnet, adding ~10 lines might not be a problem on its own, but `SPACTA.md` has higher information density than other documents and may be hit harder by the attention-dispersion effect discussed below. What matters isn't just line count, but how much attention gets dispersed, and how that trades off against recognition/compliance cost. `[Recognized]`
 - Therefore, we made a decision: `SPACTA.md` and its peripheral scripts (like verify) contain only execution rules — context, history, and insight get pushed out of it. It would have made sense, for the AI's context preservation, to include the alpha evaluation as well, but α0 pushes the alpha evaluation out into an external file instead. `[Implication]`
 

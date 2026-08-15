@@ -40,7 +40,7 @@ a feature · L8 no raw colours or arbitrary values · L9 no IO or non-determinis
 L10 feature components keep no state.
 
 Read §1 of `SPACTA.md` for the full text. If the project installed the package it is at
-`node_modules/spacta/SPACTA.md`.
+`node_modules/spacta/docs_AI-ONLY/SPACTA.md`.
 
 ## Adding an Effect
 

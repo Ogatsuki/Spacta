@@ -35,7 +35,7 @@ Read only the chapters you need.
 
 Other notes:
 
-- The execution rules handed to the AI live in [`SPACTA.md`](../SPACTA.md) (79 lines). The AI never reads this document.
+- The execution rules handed to the AI live in [`SPACTA.md`](../docs_AI-ONLY/SPACTA.md) (79 lines). The AI never reads this document.
 - Background notes on design decisions are in the [Alpha Evaluation](spacta-alpha-evaluation.md).
 - Setup instructions are in [setup.md](setup.md).
 - This is a beta. Unverified claims remain. They're listed in §7–§9. Feedback is welcome.
@@ -391,7 +391,7 @@ There's no `useState`, `new Date()`, or `crypto.randomUUID()` in `shell.tsx`. Th
 
 Isolation only means something if you can trust it. Instead of asserting "the boundary should be respected," Spacta walks TypeScript's syntax tree to check.
 
-**There are 10 Laws.** Below are 7 representative ones — **L5, L6, and L8 are omitted here** (L6 is the verifier checking itself, covered below; L8 is informational only). All 10 are in [`SPACTA.md`](../SPACTA.md).
+**There are 10 Laws.** Below are 7 representative ones — **L5, L6, and L8 are omitted here** (L6 is the verifier checking itself, covered below; L8 is informational only). All 10 are in [`SPACTA.md`](../docs_AI-ONLY/SPACTA.md).
 
 | | Content |
 |---|---|
@@ -723,9 +723,9 @@ Another way to see it: in languages with an effect system, like Haskell or Koka,
 ## Next steps
 
 * **Setup:** [setup.md](setup.md)
-* **Execution rules for the AI (79 lines):** [`SPACTA.md`](../SPACTA.md)
-* **Settled design decisions, and the checks that enforce them:** [`spacta-decisions.md`](../spacta-decisions.md)
-* **What's still unsettled:** [`spacta-open-questions.md`](../spacta-open-questions.md)
+* **Execution rules for the AI (79 lines):** [`SPACTA.md`](../docs_AI-ONLY/SPACTA.md)
+* **Settled design decisions, and the checks that enforce them:** [`spacta-decisions.md`](../docs_AI-ONLY/spacta-decisions.md)
+* **What's still unsettled:** [`spacta-open-questions.md`](../docs_AI-ONLY/spacta-open-questions.md)
 * **Design notes (attention, cognitive load):** [Alpha Evaluation](spacta-alpha-evaluation.md)
 
 How to run the tools (no npm package is published, so run these directly):

@@ -35,7 +35,7 @@ Spactaは機能ごとに、**計算だけをする層（Core）と、外界に�
 
 その他：
 
-- AIに渡す実行ルールは [`SPACTA.md`](../../SPACTA.md)（79行）です。この文書はAIには読ませません。
+- AIに渡す実行ルールは [`SPACTA.md`](../../docs_AI-ONLY/SPACTA.md)（79行）です。この文書はAIには読ませません。
 - 設計判断の背景メモは [α評価](spacta-alpha-evaluation.md) にあります。
 - セットアップは [setup.md](../setup.md)。
 - ベータ版です。未検証の主張が残っています。§7〜§9に記載しました。フィードバックを歓迎します。
@@ -391,7 +391,7 @@ export function SampleShell({ initData }: { initData: InitData }) {
 
 隔離は、それを信頼できて初めて意味を持ちます。Spactaは「境界は守られているはず」と主張するのではなく、TypeScriptの構文木を歩いて確認します。
 
-**Law（掟）は10本**です。以下は代表的な7本で、**L5・L6・L8はここでは省きます**（L6は検証器自身の検査で後述、L8は情報表示のみ）。全10本は [`SPACTA.md`](../../SPACTA.md) にあります。
+**Law（掟）は10本**です。以下は代表的な7本で、**L5・L6・L8はここでは省きます**（L6は検証器自身の検査で後述、L8は情報表示のみ）。全10本は [`SPACTA.md`](../../docs_AI-ONLY/SPACTA.md) にあります。
 
 | | 内容 |
 |---|---|
@@ -723,9 +723,9 @@ Spactaを層に分解すると次のようになります。
 ## 次のステップ
 
 * **セットアップ：** [setup.md](../setup.md)
-* **AI向け実行ルール（79行）：** [`SPACTA.md`](../../SPACTA.md)
-* **決着した設計判断と、それを守っている検査：** [`spacta-decisions.md`](../../spacta-decisions.md)
-* **決着していないこと：** [`spacta-open-questions.md`](../../spacta-open-questions.md)
+* **AI向け実行ルール（79行）：** [`SPACTA.md`](../../docs_AI-ONLY/SPACTA.md)
+* **決着した設計判断と、それを守っている検査：** [`spacta-decisions.md`](../../docs_AI-ONLY/spacta-decisions.md)
+* **決着していないこと：** [`spacta-open-questions.md`](../../docs_AI-ONLY/spacta-open-questions.md)
 * **設計メモ（Attention・認知負荷まわり）：** [α評価](spacta-alpha-evaluation.md)
 
 実行方法（npmパッケージは未配布のため直接実行します）：
