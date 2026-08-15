@@ -1,7 +1,7 @@
 node_modules
 garden-report.json
 .DS_Store
-docs_dev/
+doc_dev/
 
 # Build output of `npm run build`. The engine's source of truth is engine/*.ts; this is the
 # compiled copy consumers import, produced on `prepack` and never committed.
