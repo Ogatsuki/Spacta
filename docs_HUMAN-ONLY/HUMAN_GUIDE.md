@@ -429,6 +429,7 @@ Every time `verify` runs, it prints what it scanned and how many, and what this 
     ...
   NOT guaranteed by this green:
     - Type integrity (props / contracts)              → run `tsc --noEmit` separately
+    - Statement-level defects (unused, regex, invisible chars) → run ESLint separately
     - Judgement kept out of shell.tsx                 → not checked
     - Effect results actually reaching Core at runtime → partially checked
     - Write-path round trip in features below T3      → not checked
@@ -438,6 +439,7 @@ Every time `verify` runs, it prints what it scanned and how many, and what this 
 Before treating green as a reason to skip reading the diff, check these two lists. In particular:
 
 - **Type integrity isn't included in green.** Run `tsc --noEmit` separately (the `--tsc` flag runs it together).
+- **What is inside a statement isn't included either.** A Law reads where a file sits and what it imports; it never reads the inside of an expression. A NO-BREAK SPACE hidden in a regex passed every gate this project has — verify, the cross-check, `mutate` and `tsc` — because it is local, deterministic and has no hidden input, which is exactly what those gates are built to confirm. Run ESLint separately, the same way you run `tsc`.
 - **Shell staying free of judgment isn't included in green either.**
 
 Run time is 0.8s for a 57-file project, 0.25s for the starter — fast enough to run every iteration.

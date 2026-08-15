@@ -159,6 +159,20 @@ the coupling look managed.
   is deleted, and `starter/src/shared/spacta/` with it — the starter imports `spacta/react` like
   any other dependency. The record it closes: `livingdoc/verify/` was 35 files that 0.10 found
   still on v0.9.x, missing L3, L9, L10 and roles, gone stale with no signal at all.
+- **A tenth line under `NOT guaranteed by this green`: statement-level defects.** Measured, not
+  supposed. A NO-BREAK SPACE sat inside `normalizeQuote`'s `[\s ]` — the function `POST
+  /api/traces` and Core both call so that a stored `quote_key` and a grouping key cannot
+  disagree — and **every gate this project owns passed it**: the Laws read placement and
+  imports, the cross-check replays a deterministic run faithfully whether it is right or wrong,
+  `mutate` breaks round trips and not regex literals, and `tsc` sees a valid string. It is
+  harmless (JavaScript's `\s` already matches U+00A0), which is the only reason it is a footnote
+  and not an incident: a defect that satisfies all three of the central claim's conditions —
+  local, reproducible from `(initData, actions[])`, no hidden input — is exactly the shape those
+  conditions cannot see. ESLint's default recommended set caught it with no plugin. The line
+  points there the same way the first line points at `tsc`; **the Laws are still ten**, and a
+  linter is not one of them, for the reason `SPACTA.md`'s own hierarchy gives: a rule that
+  `// eslint-disable-next-line` can switch off is not physically enforced, and therefore is
+  Advice — which is the layer that actually wants an escape hatch with a reason attached.
 - **`SPACTA.md` §3 — Scope.** Three facts an adopter previously had to find by reading the
   source: fetching and persistence are not Spacta's and two features reading the same table are
   coupled where no Law looks (`measure`'s `spread` keeps that hole countable); an Effect brings

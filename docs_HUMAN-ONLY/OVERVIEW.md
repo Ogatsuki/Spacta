@@ -85,11 +85,12 @@ ran. From the reference implementation:
 
   NOT guaranteed by this green:
     - Type integrity (props / contracts)                    -> run `tsc --noEmit` separately
+    - Statement-level defects (unused, regex, invisible)    -> run ESLint separately
     - Judgement kept out of shell.tsx                       -> not checked
     - Widget-local state in shared/ui staying non-domain    -> not checked
     - Effect results actually reaching Core at runtime      -> partially checked
     - Concurrent dispatch during an in-flight Effect        -> not checked
-    - Write-path round trip without correlationId           -> not checked
+    - Write-path round trip in features below T3            -> not checked
     - Build order when delegating to parallel agents        -> not checked
     - Presentation consistency                              -> info only (L8), never blocks
     - Semantic correctness                                  -> never checked

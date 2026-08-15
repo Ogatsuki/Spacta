@@ -429,15 +429,17 @@ L4に補足があります。網羅的に閉じる形は2つあります。`asse
     ...
   NOT guaranteed by this green:
     - Type integrity (props / contracts)              → run `tsc --noEmit` separately
+    - Statement-level defects (unused, regex, invisible chars) → run ESLint separately
     - Judgement kept out of shell.tsx                 → not checked
     - Effect results actually reaching Core at runtime → partially checked
     - Write-path round trip in features below T3      → not checked
     - Semantic correctness                            → never checked
 ```
 
-緑を根拠に差分を読まずに済ませる前に、この2つのリストを確認してください。特に次の2点です。
+緑を根拠に差分を読まずに済ませる前に、この2つのリストを確認してください。特に次の3点です。
 
 - **型整合は緑に含まれません。** `tsc --noEmit` を別途実行してください（`--tsc` フラグでまとめて実行できます）。
+- **文の「中身」も緑に含まれません。** 掟が読むのはファイルの置き場所と import であって、式の内部ではありません。正規表現に紛れ込んだ NO-BREAK SPACE は、このプロジェクトの全ゲート（verify・cross-check・`mutate`・`tsc`）を素通りしました —— 機能に閉じていて、決定的で、隠れ入力も無いからです。それはまさにゲート側が「正しい」と確認するために作られた性質です。`tsc` と同じように、ESLint を別途走らせてください。
 - **shellに判断が溜まっていないことも緑に含まれません。**
 
 実行時間は57ファイルのプロジェクトで0.8秒、starterで0.25秒です。毎イテレーション実行できる速度です。

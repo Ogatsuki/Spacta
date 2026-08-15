@@ -2316,6 +2316,13 @@ function printUnclassified(unknown) {
 // stated so that nobody has to discover it the hard way.
 const NOT_GUARANTEED = [
   ["Type integrity (props / contracts)", "run `tsc --noEmit` separately"],
+  // 掟は「ファイルがどこに置かれ、何を import してよいか」を見る。**文の中身は見ない。**
+  // 実測で出た例: `normalizeQuote` の正規表現 `[\s ]` に U+00A0 が混入していた。この欠陥は
+  // 中心命題の3条件を**全部満たしたまま**間違う —— 機能に閉じており、`(initData, actions[])`
+  // から再現でき、隠れ入力も無い。したがって L1〜L10 も crosscheck も mutate も tsc も
+  // 構造的に無力である（実際どれも捕まえなかった）。捕まえたのは ESLint の既定ルールだけだった。
+  // tsc と同じ扱いにしてある —— この緑の外にあり、別に走らせるもの。掟が11本になるわけではない。
+  ["Statement-level defects (unused bindings, unsafe regex, invisible characters)", "not checked — a Law reads structure, not the inside of a statement; run ESLint separately"],
   ["Judgement kept out of shell.tsx", "not checked (L10 covers components, not shells)"],
   ["Widget-local state in shared/ui staying non-domain", "not checked — by design, see L10's scope"],
   ["Effect results actually reaching Core at runtime", "partially checked — the Action receptacle is required (L3); the wiring is not traced"],
