@@ -11,12 +11,15 @@
 # What this file can and cannot cover is worth stating, because a green here must not be read as
 # more than it is:
 #
-#   covered            build, the verifier against its own corpus, measure, garden, the generic
-#                      replay self-test, and the published artifact (packed, installed, used).
-#   covered on request the behavioural gates — cross-check, runtime serialization, mutate. They
-#                      read the reference application, which lives in another repository, so they
-#                      run only where a checkout is available. When it is not, the job says so
-#                      loudly instead of passing quietly.
+#   covered            build, the verifier against its own corpus, measure, garden, and the
+#                      published artifact (packed, installed, used).
+#   covered on request the behavioural gates — cross-check, runtime serialization, the replay
+#                      harness self-test, mutate. All four read the reference application, which
+#                      lives in another repository, so they run only where a checkout is
+#                      available. When it is not, the job says so loudly instead of passing
+#                      quietly. (The harness self-test plants its divergence on top of a real
+#                      scenario from that application, so it moved here rather than staying a
+#                      job of its own with nothing to check out.)
 #   not covered        semantic correctness. `verify` says so itself on every run.
 
 name: CI
@@ -64,25 +67,6 @@ jobs:
 
       - name: garden — the info/warn pass must run to completion
         run: npm run garden
-
-  # ─────────────────────────────────────────────────────────────────────────────
-  # The part of the replay machinery that names no application: it plants
-  # divergences and asserts the cross-check detects them. If this goes red the
-  # cross-check has stopped being able to fail, which is worse than a red gate.
-  #
-  # It runs on bun because `drivers.mjs` imports the engine as TypeScript.
-  # ─────────────────────────────────────────────────────────────────────────────
-  harness:
-    name: replay harness self-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install
-      - name: The cross-check can still detect a planted divergence
-        run: bun replay/harness.selftest.mjs
 
   # ─────────────────────────────────────────────────────────────────────────────
   # The artifact, not the source tree. Packs, installs into a scratch project, and
@@ -148,6 +132,15 @@ jobs:
         if: steps.gate.outputs.available == 'true'
         working-directory: spacta
 
+      # `drivers.mjs` — the shared driver behind crosscheck, runtime serialization, the
+      # harness self-test and (transitively, since it spawns crosscheck) mutate — imports
+      # the *built* engine (`dist/runtime.js`), same as `smoke-package`, not the TypeScript
+      # source. Every one of the four steps below needs this to have already run.
+      - name: Build the engine
+        if: steps.gate.outputs.available == 'true'
+        working-directory: spacta
+        run: bun x tsc -p tsconfig.build.json
+
       - name: verify — the laws, against the reference application
         if: steps.gate.outputs.available == 'true'
         working-directory: spacta
@@ -162,6 +155,16 @@ jobs:
         if: steps.gate.outputs.available == 'true'
         working-directory: spacta
         run: bun replay/runtime.serialization.test.mjs
+
+      # Moved here from a standalone `harness` job. Its own header calls this "the part of the
+      # replay machinery that names no application," which stopped being true the day S5 — a
+      # real scenario, from this reference app — became what it plants divergences on top of.
+      # A job that cannot run without a checkout it never took deserves to sit where the
+      # checkout already is, gated the same way, rather than fail unconditionally on every push.
+      - name: replay harness self-test — the cross-check can still detect a planted divergence
+        if: steps.gate.outputs.available == 'true'
+        working-directory: spacta
+        run: bun replay/harness.selftest.mjs
 
       # Exit 1 here is a measurement, not a failure: it means a mutation survived, i.e. a hole
       # in the gates. It is reported and does not fail the build, because "no gate watched this
@@ -182,6 +185,7 @@ jobs:
             echo
             echo "- \`replay/crosscheck.mjs\` — that a run rebuilds from \`(initData, actions[])\`"
             echo "- \`replay/runtime.serialization.test.mjs\` — what the engine and the features do"
+            echo "- \`replay/harness.selftest.mjs\` — that the cross-check can still catch a divergence"
             echo "- \`tools/mutate.mjs\` — which gates notice a broken round trip"
             echo
             echo "The other jobs checked structure only. Structure being green says nothing"

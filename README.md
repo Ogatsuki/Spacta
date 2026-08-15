@@ -149,9 +149,9 @@ npm run smoke      # pack, install into a scratch project, and use the result
 npm run replay     # the behavioural gates (needs ../livingdoc beside this repo)
 ```
 
-`.github/workflows/ci.yml` runs the first group on Node 18/20/22, plus the generic replay
-self-test and the packaged-artifact smoke test. The behavioural gates — cross-check, runtime
-serialization, mutate — read the reference application from another repository, so they run only
+`.github/workflows/ci.yml` runs the first group on Node 18/20/22, plus the packaged-artifact
+smoke test. The behavioural gates — cross-check, runtime serialization, the replay harness
+self-test, mutate — read the reference application from another repository, so they run only
 when a `LIVINGDOC_TOKEN` secret is present. **When it is not, the job writes what it did not
 check into the run summary rather than passing quietly**: structure being green says nothing
 about behaviour, and a CI badge that implies otherwise is worse than no badge.
