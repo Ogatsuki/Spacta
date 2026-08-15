@@ -1,6 +1,6 @@
 {
   "name": "spacta",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Spacta — Pure-boundary architecture physically enforced by AST static verification",
   "keywords": [
     "architecture",

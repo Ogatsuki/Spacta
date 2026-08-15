@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.12.1 — How far into somebody else's tree this reaches
+
+Asked of 0.12, and it turned out to have no written answer: **what may this package write into a
+project that installs it?** The behaviour was already right — `npm install spacta` runs nothing,
+and `npx spacta-init` writes two things, both under `.claude/`. But that was true because
+`init.mjs` happened to be written that way. Nothing stated the rule and nothing checked it, so
+the next good idea — *"we could emit a workflow file too, that would be helpful"* — had nothing
+to run into.
+
+The line is not "advice versus silence", it is **advice versus writing**. `setup.md` recommending
+a CI gate is Spacta explaining its own central claim, and a reader can decline it. A file written
+into somebody's repository cannot be declined, because they may never notice it arrived.
+
+### Added
+
+- **D-010, and three checks holding it.** `smoke-package` now asserts that (1) the package
+  defines no consumer lifecycle script — no `preinstall`, `install`, `postinstall` or `prepare`,
+  so installing runs nothing at all; (2) every destination `spacta-init --dry-run` names is under
+  `.claude/`; and (3) `.github/` is not in the tarball — this repository's CI is not an adopter's
+  business. **(2) is the real one**: it fails the moment a new destination appears outside
+  `.claude/`, and names it. All three were planted and watched to fail — a `.github/workflows/`
+  entry added to `init.mjs`'s plan turned (2) red by name.
+
+### Changed
+
+- **`setup.md` stops issuing a prohibition it has no standing to issue.** *"Emptying the
+  verifier's checks is strictly prohibited"* was a rule handed down about somebody else's
+  repository. What is actually worth saying is the asymmetry, and it is a stronger argument than
+  the order was: **a Law you delete is a Law you know you do not have** — `verify` prints it under
+  *"NOT verified in this project"* on every run, with the roots it looked in. A Law left in place
+  with nothing behind it prints under *Guaranteed by this green* and is indistinguishable from one
+  that held. The thing to avoid was never the missing check; it is the green that claims it ran.
+
 ## 0.12 — The package carries what machines read
 
 0.11 made Spacta installable. This asks the question that answer left open: **who reads each of

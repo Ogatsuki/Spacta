@@ -236,6 +236,38 @@ check(existsSync(join(pkgDir, ".claude-plugin", "plugin.json")), "the plugin man
 const init = run(process.execPath, [join(pkgDir, "tools", "init.mjs"), consumer, "--dry-run"]);
 check(init.code === 0 && /would write .*skills\/spacta/.test(init.out), "spacta-init resolves its payload", init.err || init.out);
 
+// ───────────────────────── 4c. how far into somebody else's tree this reaches (D-010) ──────
+// The skill and the hook are the product: Spacta exists so an agent writes inside the Laws, and
+// those two are how that happens. A project's CI, its git hooks, its package.json, its source —
+// none of that is Spacta's to tidy. The line held only because `init.mjs` happened to be written
+// that way; nothing stated it and nothing checked it, so the next good idea ("we could emit a
+// workflow file too") had nothing to run into.
+//
+// The middle check is the real one. The other two close the doors either side of it: nothing may
+// run at install time at all, and the repository's own CI is not part of the artifact.
+console.log("\nhow far into an adopter's tree this reaches:");
+
+const consumerLifecycle = ["preinstall", "install", "postinstall", "prepare"];
+const manifest = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+const present = consumerLifecycle.filter((s) => manifest.scripts?.[s]);
+check(
+  present.length === 0,
+  "installing runs nothing — no preinstall/install/postinstall/prepare",
+  present.length ? `defines: ${present.join(", ")}` : "",
+);
+
+// `--dry-run` names every destination without creating any of them, which is what makes this
+// answerable without letting the tool write first and inspecting the damage after.
+const destinations = [...init.out.matchAll(/^\s*would write\s+(.+?)\s*$/gm)].map((m) => m[1]);
+const outside = destinations.filter((d) => !d.startsWith(".claude/"));
+check(
+  destinations.length > 0 && outside.length === 0,
+  `spacta-init writes only under .claude/ (${destinations.length} destination(s))`,
+  outside.length ? `outside .claude/: ${outside.join(", ")}` : "spacta-init named no destination at all",
+);
+
+check(!existsSync(join(pkgDir, ".github")), ".github/ is absent — this repository's CI is not the adopter's");
+
 // The one document an installed agent is sent to by path. SKILL.md names it as
 // `node_modules/spacta/docs_AI-ONLY/SPACTA.md`, so a `files` change that drops it turns a
 // working reference into a dangling one, and nothing else here would notice.
